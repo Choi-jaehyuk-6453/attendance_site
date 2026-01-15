@@ -3,7 +3,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,19 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ArrowLeft,
-  Plus,
-  Building2,
-  MapPin,
-  LogOut,
-  Trash2,
-} from "lucide-react";
+import { Plus, Building2, MapPin, Trash2 } from "lucide-react";
 import type { Site } from "@shared/schema";
 
 const siteSchema = z.object({
@@ -53,8 +43,6 @@ const siteSchema = z.object({
 type SiteForm = z.infer<typeof siteSchema>;
 
 export default function SitesPage() {
-  const { user, logout } = useAuth();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -111,164 +99,122 @@ export default function SitesPage() {
     createMutation.mutate(data);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    setLocation("/");
-  };
-
-  if (!user || user.role !== "admin") {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>접근 권한이 없습니다.</p>
-      </div>
-    );
-  }
-
   const miraeSites = sites.filter((s) => s.company === "mirae_abm");
   const dawonSites = sites.filter((s) => s.company === "dawon_pmc");
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 h-16 border-b bg-card/95 backdrop-blur">
-        <div className="h-full max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation("/admin")}
-              data-testid="button-back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <span className="font-semibold">현장 관리</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              data-testid="button-logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">현장 관리</h1>
+          <p className="text-muted-foreground">
+            총 {sites.length}개의 현장이 등록되어 있습니다
+          </p>
         </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">현장 관리</h1>
-            <p className="text-muted-foreground">
-              총 {sites.length}개의 현장이 등록되어 있습니다
-            </p>
-          </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-site">
-                <Plus className="h-4 w-4 mr-2" />
-                현장 추가
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>새 현장 등록</DialogTitle>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>현장명</FormLabel>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button data-testid="button-add-site">
+              <Plus className="h-4 w-4 mr-2" />
+              현장 추가
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>새 현장 등록</DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>현장명</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="현장명을 입력하세요"
+                          data-testid="input-site-name"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>주소</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="주소를 입력하세요 (선택)"
+                          data-testid="input-site-address"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="company"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>소속 법인</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                      >
                         <FormControl>
-                          <Input
-                            placeholder="현장명을 입력하세요"
-                            data-testid="input-site-name"
-                            {...field}
-                          />
+                          <SelectTrigger data-testid="select-company">
+                            <SelectValue placeholder="법인 선택" />
+                          </SelectTrigger>
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>주소</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="주소를 입력하세요 (선택)"
-                            data-testid="input-site-address"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="company"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>소속 법인</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-company">
-                              <SelectValue placeholder="법인 선택" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="mirae_abm">미래에이비엠</SelectItem>
-                            <SelectItem value="dawon_pmc">다원피엠씨</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={createMutation.isPending}
-                    data-testid="button-submit-site"
-                  >
-                    {createMutation.isPending ? "등록 중..." : "현장 등록"}
-                  </Button>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <SiteList
-              title="미래에이비엠"
-              sites={miraeSites}
-              onDelete={(id) => deleteMutation.mutate(id)}
-            />
-            <SiteList
-              title="다원피엠씨"
-              sites={dawonSites}
-              onDelete={(id) => deleteMutation.mutate(id)}
-            />
-          </div>
-        )}
+                        <SelectContent>
+                          <SelectItem value="mirae_abm">미래에이비엠</SelectItem>
+                          <SelectItem value="dawon_pmc">다원피엠씨</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={createMutation.isPending}
+                  data-testid="button-submit-site"
+                >
+                  {createMutation.isPending ? "등록 중..." : "현장 등록"}
+                </Button>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <SiteList
+            title="미래에이비엠"
+            sites={miraeSites}
+            onDelete={(id) => deleteMutation.mutate(id)}
+          />
+          <SiteList
+            title="다원피엠씨"
+            sites={dawonSites}
+            onDelete={(id) => deleteMutation.mutate(id)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -303,6 +249,7 @@ function SiteList({
             <div
               key={site.id}
               className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+              data-testid={`card-site-${site.id}`}
             >
               <div>
                 <p className="font-medium">{site.name}</p>

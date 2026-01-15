@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, Fragment } from "react";
 import { format, getDaysInMonth, startOfMonth, getDate } from "date-fns";
 import { ko } from "date-fns/locale";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -27,9 +27,43 @@ export function AttendanceGrid({
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   const filteredUsers = users.filter((u) => u.company === company && u.role === "guard");
-  const siteName = selectedSiteId 
-    ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
-    : "전체 현장";
+  const companySites = sites.filter((s) => s.company === company && s.isActive);
+
+  const sitesWithUsers = useMemo(() => {
+    const siteUserMap = new Map<string, { site: Site; users: User[] }>();
+    
+    companySites.forEach((site) => {
+      if (selectedSiteId && site.id !== selectedSiteId) return;
+      siteUserMap.set(site.id, { site, users: [] });
+    });
+
+    const userSiteMap = new Map<string, string>();
+    attendanceLogs.forEach((log) => {
+      const user = filteredUsers.find((u) => u.id === log.userId);
+      if (user && !userSiteMap.has(user.id)) {
+        userSiteMap.set(user.id, log.siteId);
+      }
+    });
+
+    filteredUsers.forEach((user) => {
+      const siteId = userSiteMap.get(user.id);
+      if (siteId && siteUserMap.has(siteId)) {
+        siteUserMap.get(siteId)!.users.push(user);
+      }
+    });
+
+    const usersWithSite = new Set<string>();
+    siteUserMap.forEach((data) => {
+      data.users.forEach((u) => usersWithSite.add(u.id));
+    });
+
+    const usersWithoutSite = filteredUsers.filter((u) => !usersWithSite.has(u.id));
+
+    return {
+      sitesData: Array.from(siteUserMap.values()).filter((d) => d.users.length > 0),
+      unassignedUsers: usersWithoutSite,
+    };
+  }, [companySites, filteredUsers, attendanceLogs, selectedSiteId]);
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Set<number>>();
@@ -57,6 +91,11 @@ export function AttendanceGrid({
   const companyName = company === "mirae_abm" ? "㈜미래에이비엠" : "㈜다원피엠씨";
   const logoPath = company === "mirae_abm" ? miraeLogoPath : dawonLogoPath;
 
+  const totalUsers = filteredUsers.length;
+  const siteName = selectedSiteId 
+    ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
+    : "전체 현장";
+
   return (
     <div className="rounded-lg border bg-card overflow-hidden" data-testid={`grid-attendance-${company}`}>
       <div className="p-4 border-b bg-muted/30">
@@ -76,7 +115,7 @@ export function AttendanceGrid({
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="text-muted-foreground">현장명: <strong className="text-foreground">{siteName}</strong></span>
-            <span className="text-muted-foreground">인원: <strong className="text-foreground">{filteredUsers.length}명</strong></span>
+            <span className="text-muted-foreground">인원: <strong className="text-foreground">{totalUsers}명</strong></span>
           </div>
         </div>
       </div>
@@ -87,7 +126,7 @@ export function AttendanceGrid({
             <thead>
               <tr className="bg-muted/50">
                 <th className="sticky left-0 z-10 bg-muted/50 w-32 min-w-[128px] p-2 text-left font-semibold border-r border-b">
-                  성명
+                  현장 / 성명
                 </th>
                 {days.map((day) => (
                   <th
@@ -100,7 +139,7 @@ export function AttendanceGrid({
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.length === 0 ? (
+              {totalUsers === 0 ? (
                 <tr>
                   <td
                     colSpan={daysInMonth + 1}
@@ -110,28 +149,82 @@ export function AttendanceGrid({
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => {
-                  const userAttendance = attendanceMap.get(user.id) || new Set();
-                  return (
-                    <tr key={user.id} className="hover-elevate border-b last:border-b-0">
-                      <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 font-medium border-r">
-                        {user.name}
-                      </td>
-                      {days.map((day) => (
+                <>
+                  {sitesWithUsers.sitesData.map(({ site, users: siteUsers }) => (
+                    <Fragment key={`site-group-${site.id}`}>
+                      <tr className="bg-muted/30">
                         <td
-                          key={day}
-                          className="w-9 min-w-[36px] p-1 text-center"
+                          colSpan={daysInMonth + 1}
+                          className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-primary border-b"
                         >
-                          {userAttendance.has(day) ? (
-                            <span className="font-bold text-primary">O</span>
-                          ) : (
-                            <span className="text-muted-foreground/30">-</span>
-                          )}
+                          {site.name}
+                          <span className="text-muted-foreground font-normal ml-2">
+                            ({siteUsers.length}명)
+                          </span>
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })
+                      </tr>
+                      {siteUsers.map((user) => {
+                        const userAttendance = attendanceMap.get(user.id) || new Set();
+                        return (
+                          <tr key={user.id} className="hover-elevate border-b">
+                            <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                              {user.name}
+                            </td>
+                            {days.map((day) => (
+                              <td
+                                key={day}
+                                className="w-9 min-w-[36px] p-1 text-center"
+                              >
+                                {userAttendance.has(day) ? (
+                                  <span className="font-bold text-primary">O</span>
+                                ) : (
+                                  <span className="text-muted-foreground/30">-</span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                  {sitesWithUsers.unassignedUsers.length > 0 && (
+                    <>
+                      <tr className="bg-muted/30">
+                        <td
+                          colSpan={daysInMonth + 1}
+                          className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-muted-foreground border-b"
+                        >
+                          미배치
+                          <span className="font-normal ml-2">
+                            ({sitesWithUsers.unassignedUsers.length}명)
+                          </span>
+                        </td>
+                      </tr>
+                      {sitesWithUsers.unassignedUsers.map((user) => {
+                        const userAttendance = attendanceMap.get(user.id) || new Set();
+                        return (
+                          <tr key={user.id} className="hover-elevate border-b last:border-b-0">
+                            <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                              {user.name}
+                            </td>
+                            {days.map((day) => (
+                              <td
+                                key={day}
+                                className="w-9 min-w-[36px] p-1 text-center"
+                              >
+                                {userAttendance.has(day) ? (
+                                  <span className="font-bold text-primary">O</span>
+                                ) : (
+                                  <span className="text-muted-foreground/30">-</span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
               )}
             </tbody>
           </table>
