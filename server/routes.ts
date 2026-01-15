@@ -281,7 +281,7 @@ export async function registerRoutes(
       const guardPassword = await bcrypt.hash("guard123", 10);
 
       const admin = await storage.createUser({
-        username: "admin",
+        username: "관리자",
         password: adminPassword,
         name: "관리자",
         role: "admin",
@@ -387,6 +387,44 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Seed error:", error);
       res.status(500).json({ error: "초기 데이터 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.post("/api/init-admin", async (req, res) => {
+    try {
+      const existingUsers = await storage.getUsers();
+      const existingAdmin = existingUsers.find(u => u.role === "admin");
+      
+      if (existingAdmin) {
+        const newPassword = await bcrypt.hash("admin123", 10);
+        await storage.updateUser(existingAdmin.id, { 
+          username: "관리자",
+          password: newPassword 
+        });
+        return res.json({ 
+          message: "관리자 계정이 초기화되었습니다. 아이디: 관리자, 비밀번호: admin123",
+          reset: true 
+        });
+      }
+      
+      const adminPassword = await bcrypt.hash("admin123", 10);
+      await storage.createUser({
+        username: "관리자",
+        password: adminPassword,
+        name: "관리자",
+        role: "admin",
+        company: "mirae_abm",
+        phone: "010-1234-5678",
+        isActive: true,
+      });
+      
+      res.json({ 
+        message: "관리자 계정이 생성되었습니다. 아이디: 관리자, 비밀번호: admin123",
+        created: true 
+      });
+    } catch (error) {
+      console.error("Init admin error:", error);
+      res.status(500).json({ error: "관리자 계정 초기화 중 오류가 발생했습니다" });
     }
   });
 
