@@ -22,11 +22,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
-import dawonLogoPath from "@assets/다원PMC_LOGO_1768444471518.png";
 
 const attendanceMenuItems = [
   {
-    title: "대시보드",
+    title: "출근기록부",
     url: "/admin",
     icon: LayoutDashboard,
   },
@@ -34,16 +33,6 @@ const attendanceMenuItems = [
     title: "QR 관리",
     url: "/admin/qr",
     icon: QrCode,
-  },
-  {
-    title: "현장 관리",
-    url: "/admin/sites",
-    icon: Building2,
-  },
-  {
-    title: "근무자 관리",
-    url: "/admin/users",
-    icon: Users,
   },
 ];
 
@@ -53,6 +42,19 @@ const vacationMenuItems = [
     url: "/admin/vacation",
     icon: CalendarDays,
     disabled: true,
+  },
+];
+
+const managementMenuItems = [
+  {
+    title: "현장 관리",
+    url: "/admin/sites",
+    icon: Building2,
+  },
+  {
+    title: "근무자 관리",
+    url: "/admin/users",
+    icon: Users,
   },
 ];
 
@@ -69,9 +71,8 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b p-4">
         <div className="flex items-center gap-2">
-          <img src={miraeLogoPath} alt="미래에이비엠" className="h-5 object-contain" />
-          <span className="text-muted-foreground">/</span>
-          <img src={dawonLogoPath} alt="다원피엠씨" className="h-5 object-contain" />
+          <img src={miraeLogoPath} alt="미래에이비엠" className="h-6 object-contain" />
+          <span className="font-semibold text-sm">경비원 근태관리</span>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -121,6 +122,28 @@ export function AppSidebar() {
                         <span>{item.title}</span>
                       </Link>
                     )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>기초관리</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {managementMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === item.url}
+                    data-testid={`sidebar-${item.url.replace("/admin/", "")}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

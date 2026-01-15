@@ -22,10 +22,18 @@ export function ExportButtons({
   selectedMonth,
   selectedSiteId,
 }: ExportButtonsProps) {
+  const selectedSite = selectedSiteId ? sites.find(s => s.id === selectedSiteId) : null;
+  const siteName = selectedSite?.name || "전체";
+
   const generateData = (company: "mirae_abm" | "dawon_pmc") => {
     const daysInMonth = getDaysInMonth(selectedMonth);
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-    const filteredUsers = users.filter((u) => u.company === company && u.role === "guard");
+    
+    let filteredUsers = users.filter((u) => u.company === company && u.role === "guard");
+    
+    if (selectedSiteId) {
+      filteredUsers = filteredUsers.filter(u => u.siteId === selectedSiteId);
+    }
 
     const attendanceMap = new Map<string, Set<number>>();
     attendanceLogs.forEach((log) => {
@@ -57,9 +65,6 @@ export function ExportButtons({
     companies.forEach((company) => {
       const { days, filteredUsers, attendanceMap } = generateData(company);
       const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
-      const siteName = selectedSiteId
-        ? sites.find((s) => s.id === selectedSiteId)?.name || "전체"
-        : "전체";
 
       const header = ["성명", ...days.map(String)];
       const data = filteredUsers.map((user) => {
@@ -81,28 +86,46 @@ export function ExportButtons({
       XLSX.utils.book_append_sheet(wb, ws, companyName);
     });
 
-    XLSX.writeFile(
-      wb,
-      `출근기록부_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.xlsx`
-    );
+    const fileName = selectedSiteId 
+      ? `출근기록부_${siteName}_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.xlsx`
+      : `출근기록부_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.xlsx`;
+    
+    XLSX.writeFile(wb, fileName);
   };
 
-  const handlePdfPrint = () => {
+  const handlePdfPrint = async () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    
+    const fontUrl = "https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLTq8H4hfeE.ttf";
+    
+    try {
+      const response = await fetch(fontUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      
+      doc.addFileToVFS("NotoSansKR-Regular.ttf", base64);
+      doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "normal");
+      doc.setFont("NotoSansKR");
+    } catch (error) {
+      console.error("Failed to load Korean font:", error);
+    }
+    
     const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
     let firstPage = true;
 
     companies.forEach((company) => {
+      const { days, filteredUsers, attendanceMap } = generateData(company);
+      
+      if (filteredUsers.length === 0) return;
+      
       if (!firstPage) {
         doc.addPage();
       }
       firstPage = false;
 
-      const { days, filteredUsers, attendanceMap } = generateData(company);
       const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
-      const siteName = selectedSiteId
-        ? sites.find((s) => s.id === selectedSiteId)?.name || "전체"
-        : "전체";
 
       doc.setFontSize(14);
       doc.text(
@@ -122,13 +145,21 @@ export function ExportButtons({
         startY: 28,
         head: [["성명", ...days.map(String)]],
         body: tableData,
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [41, 128, 185] },
+        styles: { 
+          fontSize: 7, 
+          cellPadding: 1,
+          font: "NotoSansKR"
+        },
+        headStyles: { fillColor: [41, 128, 185], font: "NotoSansKR" },
         columnStyles: { 0: { cellWidth: 25 } },
       });
     });
 
-    doc.save(`출근기록부_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.pdf`);
+    const fileName = selectedSiteId 
+      ? `출근기록부_${siteName}_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.pdf`
+      : `출근기록부_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.pdf`;
+    
+    doc.save(fileName);
   };
 
   return (
@@ -137,6 +168,7 @@ export function ExportButtons({
         variant="outline"
         onClick={handleExcelDownload}
         data-testid="button-excel-download"
+        disabled={!selectedSiteId}
       >
         <FileSpreadsheet className="h-4 w-4 mr-2" />
         엑셀 다운로드
@@ -145,6 +177,7 @@ export function ExportButtons({
         variant="outline"
         onClick={handlePdfPrint}
         data-testid="button-pdf-print"
+        disabled={!selectedSiteId}
       >
         <Printer className="h-4 w-4 mr-2" />
         PDF 인쇄

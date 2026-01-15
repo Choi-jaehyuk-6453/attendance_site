@@ -14,6 +14,7 @@ export const users = pgTable("users", {
   role: roleEnum("role").notNull().default("guard"),
   company: companyEnum("company").notNull().default("mirae_abm"),
   phone: text("phone"),
+  siteId: varchar("site_id"),
   isActive: boolean("is_active").notNull().default(true),
 });
 

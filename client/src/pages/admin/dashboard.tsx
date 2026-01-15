@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Building2 } from "lucide-react";
 import type { User, AttendanceLog, Site } from "@shared/schema";
 
 export default function AdminDashboard() {
@@ -108,9 +109,9 @@ export default function AdminDashboard() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">출근 관리 대시보드</h1>
+        <h1 className="text-2xl font-bold">출근기록부</h1>
         <p className="text-muted-foreground">
-          법인별, 현장별 출근 현황을 확인하세요
+          현장별 출근 현황을 확인하세요
         </p>
       </div>
 
@@ -156,25 +157,38 @@ export default function AdminDashboard() {
       </div>
 
       <div className="space-y-6">
-        {(selectedCompany === "all" || selectedCompany === "mirae_abm") && (
-          <AttendanceGrid
-            users={users}
-            attendanceLogs={attendanceLogs}
-            sites={sites}
-            selectedMonth={selectedMonth}
-            selectedSiteId={selectedSiteId === "all" ? undefined : selectedSiteId}
-            company="mirae_abm"
-          />
-        )}
-        {(selectedCompany === "all" || selectedCompany === "dawon_pmc") && (
-          <AttendanceGrid
-            users={users}
-            attendanceLogs={attendanceLogs}
-            sites={sites}
-            selectedMonth={selectedMonth}
-            selectedSiteId={selectedSiteId === "all" ? undefined : selectedSiteId}
-            company="dawon_pmc"
-          />
+        {selectedSiteId === "all" ? (
+          <div className="flex flex-col items-center justify-center py-16 rounded-lg border bg-card">
+            <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">현장을 선택해주세요</h3>
+            <p className="text-muted-foreground text-center">
+              출근기록부를 확인하려면 위의 현장 선택 드롭다운에서<br />
+              현장을 선택해주세요.
+            </p>
+          </div>
+        ) : (
+          <>
+            {(selectedCompany === "all" || selectedCompany === "mirae_abm") && (
+              <AttendanceGrid
+                users={users}
+                attendanceLogs={attendanceLogs}
+                sites={sites}
+                selectedMonth={selectedMonth}
+                selectedSiteId={selectedSiteId}
+                company="mirae_abm"
+              />
+            )}
+            {(selectedCompany === "all" || selectedCompany === "dawon_pmc") && (
+              <AttendanceGrid
+                users={users}
+                attendanceLogs={attendanceLogs}
+                sites={sites}
+                selectedMonth={selectedMonth}
+                selectedSiteId={selectedSiteId}
+                company="dawon_pmc"
+              />
+            )}
+          </>
         )}
       </div>
     </div>

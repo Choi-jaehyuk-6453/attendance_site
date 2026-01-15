@@ -37,16 +37,8 @@ export function AttendanceGrid({
       siteUserMap.set(site.id, { site, users: [] });
     });
 
-    const userSiteMap = new Map<string, string>();
-    attendanceLogs.forEach((log) => {
-      const user = filteredUsers.find((u) => u.id === log.userId);
-      if (user && !userSiteMap.has(user.id)) {
-        userSiteMap.set(user.id, log.siteId);
-      }
-    });
-
     filteredUsers.forEach((user) => {
-      const siteId = userSiteMap.get(user.id);
+      const siteId = user.siteId;
       if (siteId && siteUserMap.has(siteId)) {
         siteUserMap.get(siteId)!.users.push(user);
       }
@@ -57,13 +49,15 @@ export function AttendanceGrid({
       data.users.forEach((u) => usersWithSite.add(u.id));
     });
 
-    const usersWithoutSite = filteredUsers.filter((u) => !usersWithSite.has(u.id));
+    const usersWithoutSite = selectedSiteId 
+      ? [] 
+      : filteredUsers.filter((u) => !usersWithSite.has(u.id));
 
     return {
       sitesData: Array.from(siteUserMap.values()).filter((d) => d.users.length > 0),
       unassignedUsers: usersWithoutSite,
     };
-  }, [companySites, filteredUsers, attendanceLogs, selectedSiteId]);
+  }, [companySites, filteredUsers, selectedSiteId]);
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Set<number>>();

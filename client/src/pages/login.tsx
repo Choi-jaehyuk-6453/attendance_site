@@ -12,9 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { LogIn, Building2 } from "lucide-react";
+import { LogIn } from "lucide-react";
 import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
-import dawonLogoPath from "@assets/다원PMC_LOGO_1768444471518.png";
 
 const loginSchema = z.object({
   username: z.string().min(1, "아이디를 입력해주세요"),
@@ -70,8 +69,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <header className="h-16 border-b flex items-center justify-between px-4 md:px-8">
         <div className="flex items-center gap-4">
-          <Building2 className="h-8 w-8 text-primary" />
-          <span className="font-bold text-lg">출근 관리 시스템</span>
+          <img src={miraeLogoPath} alt="미래에이비엠" className="h-8 object-contain" />
+          <span className="font-bold text-lg">경비원 근태관리</span>
         </div>
         <ThemeToggle />
       </header>
@@ -79,19 +78,14 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center space-y-4">
-            <div className="flex justify-center gap-8">
+            <div className="flex justify-center">
               <img 
                 src={miraeLogoPath} 
                 alt="미래에이비엠" 
-                className="h-10 object-contain"
-              />
-              <img 
-                src={dawonLogoPath} 
-                alt="다원피엠씨" 
-                className="h-10 object-contain"
+                className="h-12 object-contain"
               />
             </div>
-            <CardTitle className="text-2xl font-bold">근무자 출근기록부</CardTitle>
+            <CardTitle className="text-2xl font-bold">경비원 근태관리</CardTitle>
             <CardDescription>
               QR코드 기반 출근 관리 시스템에 로그인하세요
             </CardDescription>
@@ -159,7 +153,7 @@ export default function LoginPage() {
       </main>
 
       <footer className="h-12 border-t flex items-center justify-center text-sm text-muted-foreground">
-        <p>&copy; 2024 미래에이비엠 / 다원피엠씨. All rights reserved.</p>
+        <p>&copy; 2024 미래에이비엠. All rights reserved.</p>
       </footer>
     </div>
   );
