@@ -1,8 +1,8 @@
-# Security Guard Attendance Web Application
+# 경비원 근태관리 (Security Guard Attendance Web Application)
 
 ## Overview
 
-A QR code-based attendance management system for security guards. Guards check in by scanning QR codes at work sites using their smartphones, while administrators monitor attendance in real-time through a dashboard. The application supports two companies (미래ABM and 다원PMC) with role-based access for admins and guards.
+A QR code-based attendance management system for security guards (경비원 근태관리). Guards check in by scanning QR codes at work sites using their smartphones, while administrators monitor attendance in real-time through a dashboard. The application is branded for 미래에이비엠 (MIRAE ABM) with role-based access for admins and guards.
 
 ## User Preferences
 
@@ -40,17 +40,35 @@ Preferred communication style: Simple, everyday language.
 - **Company Segmentation**: Users belong to either "mirae_abm" or "dawon_pmc" company
 
 ### Test Accounts
-- Admin: username="admin", password="admin123"
-- Guard 1: username="guard1", password="guard123"
-- Guard 2: username="guard2", password="guard123"
-- Guard 3: username="guard3", password="guard123"
+- Admin: username="관리자", password="admin123"
+- Guards: username = 본인 이름, password = 전화번호 끝 4자리
+
+### User Management
+- Guards are assigned to specific sites (siteId field in users table)
+- Guard username is their real name
+- Guard password is automatically set to last 4 digits of their phone number
+- New guards can be added via 근무자 관리 page
 
 ### Key Features
 - QR code generation for work sites using the `qrcode` library
 - QR scanning via `html5-qrcode` for mobile check-in
 - Monthly attendance grid with Excel/PDF export capabilities (xlsx, jspdf)
+- PDF export uses Noto Sans KR font for proper Korean text rendering
+- Export filenames include site name when a site is selected
 - Geolocation capture during check-in
-- Vacation request management
+- Site-based guard management (guards are assigned to specific sites)
+- Vacation request management (planned feature, marked as "준비중")
+
+### Sidebar Navigation Structure
+- **출근관리**: 출근기록부 (dashboard), QR 관리
+- **휴가관리**: 휴가 신청 현황 (planned)
+- **기초관리**: 현장 관리, 근무자 관리
+
+### Admin Routes
+- `/admin` - 출근기록부 (attendance records, requires site selection)
+- `/admin/qr` - QR 코드 관리
+- `/admin/sites` - 현장 관리
+- `/admin/users` - 근무자 관리
 
 ### Path Aliases
 - `@/*` maps to `./client/src/*`
