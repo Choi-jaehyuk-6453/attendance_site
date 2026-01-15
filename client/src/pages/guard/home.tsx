@@ -19,6 +19,7 @@ import {
   MapPin,
   User,
   XCircle,
+  CalendarDays,
 } from "lucide-react";
 import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
 import dawonLogoPath from "@assets/다원PMC_LOGO_1768444471518.png";
@@ -252,6 +253,24 @@ export default function GuardHome() {
               출근하기
             </span>
           )}
+        </Button>
+
+        <Button
+          size="lg"
+          variant="outline"
+          className="w-full h-14 text-lg rounded-xl"
+          onClick={() => {
+            toast({
+              title: "준비중",
+              description: "휴가신청 기능은 현재 준비중입니다.",
+            });
+          }}
+          data-testid="button-vacation-request"
+        >
+          <span className="flex items-center gap-3">
+            <CalendarDays className="h-6 w-6" />
+            휴가신청
+          </span>
         </Button>
 
         <Card>
