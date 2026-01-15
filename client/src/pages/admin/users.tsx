@@ -37,13 +37,13 @@ import type { User, Site } from "@shared/schema";
 const createGuardSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요"),
   phone: z.string().min(4, "전화번호를 입력해주세요 (최소 4자리)"),
-  siteId: z.string().min(1, "현장을 선택해주세요"),
 });
 
 type CreateGuardForm = z.infer<typeof createGuardSchema>;
 
 export default function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
@@ -59,7 +59,6 @@ export default function UsersPage() {
     defaultValues: {
       name: "",
       phone: "",
-      siteId: "",
     },
   });
 
@@ -69,13 +68,16 @@ export default function UsersPage() {
       if (last4Digits.length < 4) {
         throw new Error("전화번호 끝 4자리를 입력해주세요");
       }
+      if (!selectedSiteId) {
+        throw new Error("현장을 선택해주세요");
+      }
       
       const res = await apiRequest("POST", "/api/users", {
         username: data.name,
         password: last4Digits,
         name: data.name,
         phone: data.phone,
-        siteId: data.siteId,
+        siteId: selectedSiteId,
         role: "guard",
         company: "mirae_abm",
       });
@@ -107,12 +109,10 @@ export default function UsersPage() {
   const guards = users.filter((u) => u.role === "guard");
   const activeSites = sites.filter(s => s.isActive);
 
-  const guardsBySite = activeSites.map(site => ({
-    site,
-    guards: guards.filter(g => g.siteId === site.id),
-  }));
-
-  const unassignedGuards = guards.filter(g => !g.siteId || !activeSites.find(s => s.id === g.siteId));
+  const selectedSite = activeSites.find(s => s.id === selectedSiteId);
+  const siteGuards = selectedSiteId 
+    ? guards.filter(g => g.siteId === selectedSiteId)
+    : [];
 
   if (isLoading) {
     return (
@@ -128,106 +128,114 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold">근무자 관리</h1>
           <p className="text-muted-foreground">
-            총 {guards.length}명의 근무자가 등록되어 있습니다
+            {selectedSite 
+              ? `${selectedSite.name} - ${siteGuards.length}명`
+              : "현장을 선택해주세요"
+            }
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-guard">
-              <UserPlus className="h-4 w-4 mr-2" />
-              근무자 추가
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>새 근무자 등록</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>이름 (로그인 아이디)</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="홍길동"
-                          data-testid="input-guard-name"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        이름이 로그인 아이디로 사용됩니다
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>전화번호</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="010-1234-5678"
-                          data-testid="input-guard-phone"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        전화번호 끝 4자리가 비밀번호로 설정됩니다
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="siteId"
-                  render={({ field }) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={selectedSiteId || ""}
+            onValueChange={(value) => setSelectedSiteId(value || null)}
+          >
+            <SelectTrigger className="w-[200px]" data-testid="select-site-filter">
+              <SelectValue placeholder="현장 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {activeSites.map((site) => (
+                <SelectItem key={site.id} value={site.id}>
+                  {site.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedSiteId && (
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-guard">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  근무자 추가
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>새 근무자 등록</DialogTitle>
+                </DialogHeader>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>이름 (로그인 아이디)</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="홍길동"
+                              data-testid="input-guard-name"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            이름이 로그인 아이디로 사용됩니다
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>전화번호</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="010-1234-5678"
+                              data-testid="input-guard-phone"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            전화번호 끝 4자리가 비밀번호로 설정됩니다
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormItem>
                       <FormLabel>배정 현장</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-guard-site">
-                            <SelectValue placeholder="현장을 선택해주세요" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {activeSites.map((site) => (
-                            <SelectItem key={site.id} value={site.id}>
-                              {site.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
+                      <FormControl>
+                        <Input
+                          value={selectedSite?.name || ""}
+                          disabled
+                          data-testid="input-guard-site"
+                        />
+                      </FormControl>
                     </FormItem>
-                  )}
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setDialogOpen(false)}
-                  >
-                    취소
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={createGuardMutation.isPending}
-                    data-testid="button-submit-guard"
-                  >
-                    {createGuardMutation.isPending ? "등록 중..." : "등록"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setDialogOpen(false)}
+                      >
+                        취소
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={createGuardMutation.isPending}
+                        data-testid="button-submit-guard"
+                      >
+                        {createGuardMutation.isPending ? "등록 중..." : "등록"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       {activeSites.length === 0 ? (
@@ -239,22 +247,19 @@ export default function UsersPage() {
             현장을 등록해주세요.
           </p>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {guardsBySite.map(({ site, guards: siteGuards }) => (
-            <UserTable
-              key={site.id}
-              title={site.name}
-              users={siteGuards}
-            />
-          ))}
-          {unassignedGuards.length > 0 && (
-            <UserTable
-              title="미배정"
-              users={unassignedGuards}
-            />
-          )}
+      ) : !selectedSiteId ? (
+        <div className="flex flex-col items-center justify-center py-16 rounded-lg border bg-card">
+          <UserPlus className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">현장을 선택해주세요</h3>
+          <p className="text-muted-foreground text-center">
+            근무자를 조회하려면 먼저 현장을 선택해주세요.
+          </p>
         </div>
+      ) : (
+        <UserTable
+          title={selectedSite?.name || ""}
+          users={siteGuards}
+        />
       )}
     </div>
   );
