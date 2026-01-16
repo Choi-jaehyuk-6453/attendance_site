@@ -173,19 +173,20 @@ export async function registerRoutes(
     }
   });
 
-  // Soft delete (deactivate) - keeps data but hides from list and prevents login
-  app.patch("/api/users/:id/deactivate", requireAdmin, async (req, res) => {
+  // Toggle active status
+  app.patch("/api/users/:id/toggle-active", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const user = await storage.getUser(id);
       if (!user) {
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
       }
-      await storage.updateUser(id, { isActive: false });
-      res.status(204).send();
+      const updated = await storage.updateUser(id, { isActive: !user.isActive });
+      const { password: _, ...userWithoutPassword } = updated!;
+      res.json(userWithoutPassword);
     } catch (error) {
-      console.error("Deactivate user error:", error);
-      res.status(500).json({ error: "사용자 비활성화 중 오류가 발생했습니다" });
+      console.error("Toggle user active error:", error);
+      res.status(500).json({ error: "상태 변경 중 오류가 발생했습니다" });
     }
   });
 

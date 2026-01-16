@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -41,14 +42,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, UserPlus, Pencil, MoreVertical, UserX, Trash2 } from "lucide-react";
+import { Plus, UserPlus, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import type { User, Site } from "@shared/schema";
 
 const guardSchema = z.object({
@@ -61,7 +61,6 @@ type GuardForm = z.infer<typeof guardSchema>;
 export default function UsersPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
@@ -157,25 +156,25 @@ export default function UsersPage() {
     },
   });
 
-  const deactivateGuardMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedUser) throw new Error("사용자가 선택되지 않았습니다");
-      await apiRequest("PATCH", `/api/users/${selectedUser.id}/deactivate`);
+  const toggleActiveMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("PATCH", `/api/users/${userId}/toggle-active`);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
-        title: "비활성화 완료",
-        description: "근무자가 비활성화되었습니다. 출근 기록은 보존됩니다.",
+        title: data.isActive ? "활성화 완료" : "비활성화 완료",
+        description: data.isActive 
+          ? "근무자가 활성화되었습니다. 로그인이 가능합니다."
+          : "근무자가 비활성화되었습니다. 로그인이 차단됩니다.",
       });
-      setDeactivateDialogOpen(false);
-      setSelectedUser(null);
     },
     onError: (error: Error) => {
       toast({
         variant: "destructive",
-        title: "비활성화 실패",
-        description: error.message || "근무자 비활성화 중 오류가 발생했습니다.",
+        title: "상태 변경 실패",
+        description: error.message || "상태 변경 중 오류가 발생했습니다.",
       });
     },
   });
@@ -212,24 +211,20 @@ export default function UsersPage() {
     setEditDialogOpen(true);
   };
 
-  const handleDeactivate = (user: User) => {
-    setSelectedUser(user);
-    setDeactivateDialogOpen(true);
-  };
-
   const handleDelete = (user: User) => {
     setSelectedUser(user);
     setDeleteDialogOpen(true);
   };
 
   const isLoading = usersLoading || sitesLoading;
-  const guards = users.filter((u) => u.role === "guard" && u.isActive);
+  const guards = users.filter((u) => u.role === "guard");
   const activeSites = sites.filter(s => s.isActive);
 
   const selectedSite = activeSites.find(s => s.id === selectedSiteId);
   const siteGuards = selectedSiteId 
     ? guards.filter(g => g.siteId === selectedSiteId)
     : [];
+  const activeGuardsCount = siteGuards.filter(g => g.isActive).length;
 
   if (isLoading) {
     return (
@@ -246,7 +241,7 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold">근무자 관리</h1>
           <p className="text-muted-foreground">
             {selectedSite 
-              ? `${selectedSite.name} - ${siteGuards.length}명`
+              ? `${selectedSite.name} - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
               : "현장을 선택해주세요"
             }
           </p>
@@ -379,14 +374,16 @@ export default function UsersPage() {
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="p-4 border-b bg-muted/30 flex items-center justify-between gap-4">
             <h3 className="font-semibold">{selectedSite?.name || ""}</h3>
-            <span className="text-sm text-muted-foreground">{siteGuards.length}명</span>
+            <span className="text-sm text-muted-foreground">
+              활성 {activeGuardsCount}명 / 전체 {siteGuards.length}명
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
+                  <th className="p-3 text-left font-medium">상태</th>
                   <th className="p-3 text-left font-medium">이름</th>
-                  <th className="p-3 text-left font-medium">아이디</th>
                   <th className="p-3 text-left font-medium">연락처</th>
                   <th className="p-3 text-center font-medium">관리</th>
                 </tr>
@@ -400,39 +397,70 @@ export default function UsersPage() {
                   </tr>
                 ) : (
                   siteGuards.map((user) => (
-                    <tr key={user.id} className="border-t hover-elevate" data-testid={`row-user-${user.id}`}>
+                    <tr 
+                      key={user.id} 
+                      className={`border-t ${!user.isActive ? "opacity-50 bg-muted/20" : ""}`}
+                      data-testid={`row-user-${user.id}`}
+                    >
+                      <td className="p-3">
+                        <Badge 
+                          variant={user.isActive ? "default" : "secondary"}
+                          className={user.isActive ? "bg-green-600" : ""}
+                        >
+                          {user.isActive ? "활성" : "비활성"}
+                        </Badge>
+                      </td>
                       <td className="p-3 font-medium">{user.name}</td>
-                      <td className="p-3 text-muted-foreground">{user.username}</td>
                       <td className="p-3 text-muted-foreground">{user.phone || "-"}</td>
-                      <td className="p-3 text-center">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              data-testid={`button-menu-user-${user.id}`}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEdit(user)}>
-                              <Pencil className="h-4 w-4 mr-2" />
-                              수정
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeactivate(user)}>
-                              <UserX className="h-4 w-4 mr-2" />
-                              비활성화
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(user)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              완전 삭제
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <td className="p-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => toggleActiveMutation.mutate(user.id)}
+                                disabled={toggleActiveMutation.isPending}
+                                data-testid={`button-toggle-user-${user.id}`}
+                              >
+                                {user.isActive ? (
+                                  <ToggleRight className="h-5 w-5 text-green-600" />
+                                ) : (
+                                  <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {user.isActive ? "비활성화" : "활성화"}
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleEdit(user)}
+                                data-testid={`button-edit-user-${user.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>수정</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleDelete(user)}
+                                data-testid={`button-delete-user-${user.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>삭제</TooltipContent>
+                          </Tooltip>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -511,29 +539,6 @@ export default function UsersPage() {
           </Form>
         </DialogContent>
       </Dialog>
-
-      {/* Deactivate Confirmation Dialog */}
-      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>근무자 비활성화</AlertDialogTitle>
-            <AlertDialogDescription>
-              {selectedUser?.name} 근무자를 비활성화하시겠습니까?
-              <br /><br />
-              <strong>비활성화:</strong> 로그인 불가, 목록에서 숨김, 출근 기록 보존
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deactivateGuardMutation.mutate()}
-              data-testid="button-confirm-deactivate-guard"
-            >
-              {deactivateGuardMutation.isPending ? "처리 중..." : "비활성화"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
