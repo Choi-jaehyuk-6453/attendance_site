@@ -116,6 +116,9 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// Trust proxy for production (Replit uses reverse proxy)
+app.set("trust proxy", 1);
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "attendance-secret-key-change-in-production",
@@ -125,6 +128,7 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     },
   })
 );
