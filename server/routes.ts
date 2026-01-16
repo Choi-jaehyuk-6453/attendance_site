@@ -390,7 +390,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/init-admin", async (req, res) => {
+  app.all("/api/init-admin", async (req, res) => {
     try {
       const existingUsers = await storage.getUsers();
       const existingAdmin = existingUsers.find(u => u.role === "admin");
