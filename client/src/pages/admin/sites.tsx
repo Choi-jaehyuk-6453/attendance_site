@@ -62,6 +62,10 @@ export default function SitesPage() {
   const createMutation = useMutation({
     mutationFn: async (data: SiteForm) => {
       const res = await apiRequest("POST", "/api/sites", data);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.details || errorData.error || "현장 등록 실패");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -73,11 +77,12 @@ export default function SitesPage() {
         description: "새 현장이 등록되었습니다.",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error("Site creation error:", error);
       toast({
         variant: "destructive",
         title: "등록 실패",
-        description: "현장 등록 중 오류가 발생했습니다.",
+        description: error.message || "현장 등록 중 오류가 발생했습니다.",
       });
     },
   });
