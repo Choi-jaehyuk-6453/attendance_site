@@ -26,7 +26,7 @@ export function AttendanceGrid({
   const daysInMonth = getDaysInMonth(selectedMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const filteredUsers = users.filter((u) => u.company === company && u.role === "guard");
+  const filteredUsers = users.filter((u) => u.company === company && u.role === "guard" && u.isActive);
   const companySites = sites.filter((s) => s.company === company && s.isActive);
 
   const sitesWithUsers = useMemo(() => {
