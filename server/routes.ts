@@ -133,15 +133,20 @@ export async function registerRoutes(
 
   app.post("/api/sites", requireAdmin, async (req, res) => {
     try {
+      console.log("Creating site with data:", req.body);
       const validatedData = insertSiteSchema.parse(req.body);
+      console.log("Validated data:", validatedData);
       const site = await storage.createSite(validatedData);
+      console.log("Site created successfully:", site);
       res.status(201).json(site);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("Validation error:", error.errors);
         return res.status(400).json({ error: error.errors[0].message });
       }
       console.error("Create site error:", error);
-      res.status(500).json({ error: "현장 생성 중 오류가 발생했습니다" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: "현장 생성 중 오류가 발생했습니다", details: errorMessage });
     }
   });
 
@@ -387,6 +392,59 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Seed error:", error);
       res.status(500).json({ error: "초기 데이터 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Database status check endpoint
+  app.all("/api/db-status", async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      
+      // Check if tables exist
+      const tablesResult = await pool.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE';
+      `);
+      
+      const tables = tablesResult.rows.map(r => r.table_name);
+      
+      // Check enum types
+      const enumsResult = await pool.query(`
+        SELECT typname FROM pg_type 
+        WHERE typtype = 'e';
+      `);
+      
+      const enums = enumsResult.rows.map(r => r.typname);
+      
+      // Count records in each table
+      const counts: Record<string, number> = {};
+      for (const table of tables) {
+        try {
+          const countResult = await pool.query(`SELECT COUNT(*) FROM "${table}"`);
+          counts[table] = parseInt(countResult.rows[0].count);
+        } catch (e) {
+          counts[table] = -1; // Error counting
+        }
+      }
+      
+      res.json({
+        connected: true,
+        tables,
+        enums,
+        counts,
+        requiredTables: ['users', 'sites', 'attendance_logs', 'vacation_requests'],
+        requiredEnums: ['role', 'company', 'vacation_status'],
+        missingTables: ['users', 'sites', 'attendance_logs', 'vacation_requests'].filter(t => !tables.includes(t)),
+        missingEnums: ['role', 'company', 'vacation_status'].filter(e => !enums.includes(e))
+      });
+    } catch (error) {
+      console.error("DB status error:", error);
+      res.status(500).json({ 
+        connected: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
