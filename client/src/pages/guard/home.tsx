@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format, startOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -112,7 +112,8 @@ export default function GuardHome() {
     },
   });
 
-  const handleScan = (data: string) => {
+  const handleScan = useCallback((data: string) => {
+    setShowScanner(false);
     try {
       const qrData = JSON.parse(data);
       if (qrData.type === "attendance" && qrData.siteId) {
@@ -127,7 +128,6 @@ export default function GuardHome() {
           title: "잘못된 QR 코드",
           description: "올바른 출근용 QR 코드가 아닙니다.",
         });
-        setShowScanner(false);
       }
     } catch {
       toast({
@@ -135,9 +135,8 @@ export default function GuardHome() {
         title: "QR 코드 인식 실패",
         description: "QR 코드를 다시 스캔해주세요.",
       });
-      setShowScanner(false);
     }
-  };
+  }, [location, toast, checkInMutation]);
 
   const handleLogout = async () => {
     await logout();

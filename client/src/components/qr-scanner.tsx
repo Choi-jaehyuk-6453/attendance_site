@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { X, Camera } from "lucide-react";
@@ -12,10 +12,28 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [error, setError] = useState<string>("");
   const [isScanning, setIsScanning] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const hasScannedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current.clear();
+      } catch {
+        // ignore cleanup errors
+      }
+      scannerRef.current = null;
+    }
+    setIsScanning(false);
+  }, []);
+
   useEffect(() => {
+    let isMounted = true;
+
     const startScanner = async () => {
+      if (hasScannedRef.current) return;
+      
       try {
         setIsScanning(true);
         setError("");
@@ -30,46 +48,36 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
             qrbox: { width: 250, height: 250 },
           },
           (decodedText) => {
-            onScan(decodedText);
-            stopScanner();
+            if (hasScannedRef.current) return;
+            hasScannedRef.current = true;
+            
+            stopScanner().then(() => {
+              if (isMounted) {
+                onScan(decodedText);
+              }
+            });
           },
           () => {}
         );
       } catch (err) {
-        setError("카메라에 접근할 수 없습니다. 카메라 권한을 확인해주세요.");
-        setIsScanning(false);
-      }
-    };
-
-    const stopScanner = async () => {
-      if (scannerRef.current) {
-        try {
-          await scannerRef.current.stop();
-          scannerRef.current.clear();
-        } catch {
-          // ignore cleanup errors
+        if (isMounted) {
+          setError("카메라에 접근할 수 없습니다. 카메라 권한을 확인해주세요.");
+          setIsScanning(false);
         }
-        scannerRef.current = null;
       }
-      setIsScanning(false);
     };
 
     startScanner();
 
     return () => {
+      isMounted = false;
       stopScanner();
     };
-  }, [onScan]);
+  }, []);
 
   const handleClose = async () => {
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current.clear();
-      } catch {
-        // ignore cleanup errors
-      }
-    }
+    hasScannedRef.current = true;
+    await stopScanner();
     onClose();
   };
 
