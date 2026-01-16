@@ -42,13 +42,22 @@ export async function registerRoutes(
         return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
       }
       
+      // Check if user is active (not deleted)
+      if (!user.isActive) {
+        return res.status(401).json({ error: "비활성화된 계정입니다. 관리자에게 문의해주세요." });
+      }
+      
+      // Check if user's assigned site is still active (for guards)
+      if (user.role === "guard" && user.siteId) {
+        const site = await storage.getSite(user.siteId);
+        if (!site || !site.isActive) {
+          return res.status(401).json({ error: "배정된 현장이 삭제되었습니다. 관리자에게 문의해주세요." });
+        }
+      }
+      
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
         return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
-      }
-      
-      if (!user.isActive) {
-        return res.status(403).json({ error: "비활성화된 계정입니다" });
       }
       
       req.session.userId = user.id;
