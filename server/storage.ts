@@ -65,7 +65,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUsers(): Promise<User[]> {
-    return db.select().from(users).where(eq(users.isActive, true));
+    return db.select().from(users);
   }
 
   async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
