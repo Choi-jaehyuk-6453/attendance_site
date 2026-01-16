@@ -36,34 +36,39 @@ export async function registerRoutes(
         return res.status(400).json({ error: "아이디와 비밀번호를 입력해주세요" });
       }
       
-      const user = await storage.getUserByUsername(username);
+      // Get all active users with this username (allows duplicate names)
+      const matchingUsers = await storage.getUsersByUsername(username);
       
-      if (!user) {
+      if (matchingUsers.length === 0) {
         return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
       }
       
-      // Check if user is active (not deleted)
-      if (!user.isActive) {
-        return res.status(401).json({ error: "비활성화된 계정입니다. 관리자에게 문의해주세요." });
+      // Find the user with matching password
+      let matchedUser = null;
+      for (const user of matchingUsers) {
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (isValidPassword) {
+          matchedUser = user;
+          break;
+        }
+      }
+      
+      if (!matchedUser) {
+        return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
       }
       
       // Check if user's assigned site is still active (for guards)
-      if (user.role === "guard" && user.siteId) {
-        const site = await storage.getSite(user.siteId);
+      if (matchedUser.role === "guard" && matchedUser.siteId) {
+        const site = await storage.getSite(matchedUser.siteId);
         if (!site || !site.isActive) {
           return res.status(401).json({ error: "배정된 현장이 삭제되었습니다. 관리자에게 문의해주세요." });
         }
       }
       
-      const isValidPassword = await bcrypt.compare(password, user.password);
-      if (!isValidPassword) {
-        return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
-      }
+      req.session.userId = matchedUser.id;
+      req.session.role = matchedUser.role;
       
-      req.session.userId = user.id;
-      req.session.role = user.role;
-      
-      const { password: _, ...userWithoutPassword } = user;
+      const { password: _, ...userWithoutPassword } = matchedUser;
       res.json({ user: userWithoutPassword });
     } catch (error) {
       console.error("Login error:", error);
@@ -109,9 +114,14 @@ export async function registerRoutes(
     try {
       const validatedData = insertUserSchema.parse(req.body);
       
-      const existing = await storage.getUserByUsername(validatedData.username);
-      if (existing) {
-        return res.status(400).json({ error: "이미 존재하는 아이디입니다" });
+      // Check for same name + same phone at same site (true duplicate)
+      const existingUsers = await storage.getUsersByUsername(validatedData.username);
+      const last4Digits = validatedData.password; // password is last 4 digits of phone before hashing
+      for (const existing of existingUsers) {
+        const samePassword = await bcrypt.compare(last4Digits, existing.password);
+        if (samePassword && existing.siteId === validatedData.siteId) {
+          return res.status(400).json({ error: "같은 현장에 동일한 이름과 전화번호를 가진 근무자가 이미 등록되어 있습니다" });
+        }
       }
       
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
@@ -163,6 +173,23 @@ export async function registerRoutes(
     }
   });
 
+  // Soft delete (deactivate) - keeps data but hides from list and prevents login
+  app.patch("/api/users/:id/deactivate", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      await storage.updateUser(id, { isActive: false });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Deactivate user error:", error);
+      res.status(500).json({ error: "사용자 비활성화 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Hard delete - removes all data including attendance logs
   app.delete("/api/users/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
@@ -170,8 +197,7 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
       }
-      // Soft delete by setting isActive to false
-      await storage.updateUser(id, { isActive: false });
+      await storage.deleteUser(id);
       res.status(204).send();
     } catch (error) {
       console.error("Delete user error:", error);

@@ -18,9 +18,11 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUsersByUsername(username: string): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   getUsers(): Promise<User[]>;
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<void>;
   
   getSite(id: string): Promise<Site | undefined>;
   getSites(): Promise<Site[]>;
@@ -51,6 +53,12 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUsersByUsername(username: string): Promise<User[]> {
+    return db.select().from(users).where(
+      and(eq(users.username, username), eq(users.isActive, true))
+    );
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
@@ -63,6 +71,15 @@ export class DatabaseStorage implements IStorage {
   async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
     const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return user || undefined;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    // First delete all attendance logs for this user
+    await db.delete(attendanceLogs).where(eq(attendanceLogs.userId, id));
+    // Then delete all vacation requests for this user
+    await db.delete(vacationRequests).where(eq(vacationRequests.userId, id));
+    // Finally delete the user
+    await db.delete(users).where(eq(users.id, id));
   }
 
   async getSite(id: string): Promise<Site | undefined> {

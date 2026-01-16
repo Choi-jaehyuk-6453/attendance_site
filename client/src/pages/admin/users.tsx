@@ -40,9 +40,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, UserPlus, Pencil, Trash2 } from "lucide-react";
+import { Plus, UserPlus, Pencil, MoreVertical, UserX, Trash2 } from "lucide-react";
 import type { User, Site } from "@shared/schema";
 
 const guardSchema = z.object({
@@ -55,6 +61,7 @@ type GuardForm = z.infer<typeof guardSchema>;
 export default function UsersPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
@@ -150,6 +157,29 @@ export default function UsersPage() {
     },
   });
 
+  const deactivateGuardMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedUser) throw new Error("사용자가 선택되지 않았습니다");
+      await apiRequest("PATCH", `/api/users/${selectedUser.id}/deactivate`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "비활성화 완료",
+        description: "근무자가 비활성화되었습니다. 출근 기록은 보존됩니다.",
+      });
+      setDeactivateDialogOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "비활성화 실패",
+        description: error.message || "근무자 비활성화 중 오류가 발생했습니다.",
+      });
+    },
+  });
+
   const deleteGuardMutation = useMutation({
     mutationFn: async () => {
       if (!selectedUser) throw new Error("사용자가 선택되지 않았습니다");
@@ -159,7 +189,7 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
         title: "삭제 완료",
-        description: "근무자가 삭제되었습니다.",
+        description: "근무자와 모든 출근 기록이 삭제되었습니다.",
       });
       setDeleteDialogOpen(false);
       setSelectedUser(null);
@@ -180,6 +210,11 @@ export default function UsersPage() {
       phone: user.phone || "",
     });
     setEditDialogOpen(true);
+  };
+
+  const handleDeactivate = (user: User) => {
+    setSelectedUser(user);
+    setDeactivateDialogOpen(true);
   };
 
   const handleDelete = (user: User) => {
@@ -244,7 +279,7 @@ export default function UsersPage() {
                 <DialogHeader>
                   <DialogTitle>새 근무자 등록</DialogTitle>
                   <DialogDescription>
-                    새로운 근무자를 등록합니다.
+                    새로운 근무자를 등록합니다. 동명이인도 등록 가능합니다.
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...createForm}>
@@ -370,24 +405,34 @@ export default function UsersPage() {
                       <td className="p-3 text-muted-foreground">{user.username}</td>
                       <td className="p-3 text-muted-foreground">{user.phone || "-"}</td>
                       <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleEdit(user)}
-                            data-testid={`button-edit-user-${user.id}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleDelete(user)}
-                            data-testid={`button-delete-user-${user.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              data-testid={`button-menu-user-${user.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEdit(user)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              수정
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeactivate(user)}>
+                              <UserX className="h-4 w-4 mr-2" />
+                              비활성화
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDelete(user)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              완전 삭제
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))
@@ -467,15 +512,38 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Deactivate Confirmation Dialog */}
+      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>근무자 비활성화</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedUser?.name} 근무자를 비활성화하시겠습니까?
+              <br /><br />
+              <strong>비활성화:</strong> 로그인 불가, 목록에서 숨김, 출근 기록 보존
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deactivateGuardMutation.mutate()}
+              data-testid="button-confirm-deactivate-guard"
+            >
+              {deactivateGuardMutation.isPending ? "처리 중..." : "비활성화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>근무자 삭제</AlertDialogTitle>
+            <AlertDialogTitle>근무자 완전 삭제</AlertDialogTitle>
             <AlertDialogDescription>
-              {selectedUser?.name} 근무자를 삭제하시겠습니까?
-              <br />
-              삭제된 근무자는 더 이상 로그인할 수 없습니다.
+              {selectedUser?.name} 근무자를 완전히 삭제하시겠습니까?
+              <br /><br />
+              <strong className="text-destructive">주의:</strong> 모든 출근 기록이 함께 삭제되며 복구할 수 없습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -485,7 +553,7 @@ export default function UsersPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete-guard"
             >
-              {deleteGuardMutation.isPending ? "삭제 중..." : "삭제"}
+              {deleteGuardMutation.isPending ? "삭제 중..." : "완전 삭제"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
