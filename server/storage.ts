@@ -57,7 +57,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUsers(): Promise<User[]> {
-    return db.select().from(users);
+    return db.select().from(users).where(eq(users.isActive, true));
   }
 
   async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
@@ -71,7 +71,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSites(): Promise<Site[]> {
-    return db.select().from(sites);
+    return db.select().from(sites).where(eq(sites.isActive, true));
   }
 
   async createSite(insertSite: InsertSite): Promise<Site> {

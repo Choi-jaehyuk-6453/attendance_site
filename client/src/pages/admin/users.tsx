@@ -12,7 +12,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Form,
   FormControl,
@@ -31,18 +42,21 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, UserPlus } from "lucide-react";
+import { Plus, UserPlus, Pencil, Trash2 } from "lucide-react";
 import type { User, Site } from "@shared/schema";
 
-const createGuardSchema = z.object({
+const guardSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요"),
   phone: z.string().min(4, "전화번호를 입력해주세요 (최소 4자리)"),
 });
 
-type CreateGuardForm = z.infer<typeof createGuardSchema>;
+type GuardForm = z.infer<typeof guardSchema>;
 
 export default function UsersPage() {
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -54,8 +68,16 @@ export default function UsersPage() {
     queryKey: ["/api/sites"],
   });
 
-  const form = useForm<CreateGuardForm>({
-    resolver: zodResolver(createGuardSchema),
+  const createForm = useForm<GuardForm>({
+    resolver: zodResolver(guardSchema),
+    defaultValues: {
+      name: "",
+      phone: "",
+    },
+  });
+
+  const editForm = useForm<GuardForm>({
+    resolver: zodResolver(guardSchema),
     defaultValues: {
       name: "",
       phone: "",
@@ -63,7 +85,7 @@ export default function UsersPage() {
   });
 
   const createGuardMutation = useMutation({
-    mutationFn: async (data: CreateGuardForm) => {
+    mutationFn: async (data: GuardForm) => {
       const last4Digits = data.phone.replace(/\D/g, "").slice(-4);
       if (last4Digits.length < 4) {
         throw new Error("전화번호 끝 4자리를 입력해주세요");
@@ -89,8 +111,8 @@ export default function UsersPage() {
         title: "등록 완료",
         description: "새 근무자가 등록되었습니다. 비밀번호는 전화번호 끝 4자리입니다.",
       });
-      setDialogOpen(false);
-      form.reset();
+      setCreateDialogOpen(false);
+      createForm.reset();
     },
     onError: (error: Error) => {
       toast({
@@ -101,12 +123,72 @@ export default function UsersPage() {
     },
   });
 
-  const onSubmit = (data: CreateGuardForm) => {
-    createGuardMutation.mutate(data);
+  const updateGuardMutation = useMutation({
+    mutationFn: async (data: GuardForm) => {
+      if (!selectedUser) throw new Error("사용자가 선택되지 않았습니다");
+      const res = await apiRequest("PATCH", `/api/users/${selectedUser.id}`, {
+        name: data.name,
+        phone: data.phone,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "수정 완료",
+        description: "근무자 정보가 수정되었습니다.",
+      });
+      setEditDialogOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "수정 실패",
+        description: error.message || "근무자 수정 중 오류가 발생했습니다.",
+      });
+    },
+  });
+
+  const deleteGuardMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedUser) throw new Error("사용자가 선택되지 않았습니다");
+      await apiRequest("DELETE", `/api/users/${selectedUser.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "삭제 완료",
+        description: "근무자가 삭제되었습니다.",
+      });
+      setDeleteDialogOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "삭제 실패",
+        description: error.message || "근무자 삭제 중 오류가 발생했습니다.",
+      });
+    },
+  });
+
+  const handleEdit = (user: User) => {
+    setSelectedUser(user);
+    editForm.reset({
+      name: user.name,
+      phone: user.phone || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleDelete = (user: User) => {
+    setSelectedUser(user);
+    setDeleteDialogOpen(true);
   };
 
   const isLoading = usersLoading || sitesLoading;
-  const guards = users.filter((u) => u.role === "guard");
+  const guards = users.filter((u) => u.role === "guard" && u.isActive);
   const activeSites = sites.filter(s => s.isActive);
 
   const selectedSite = activeSites.find(s => s.id === selectedSiteId);
@@ -151,7 +233,7 @@ export default function UsersPage() {
             </SelectContent>
           </Select>
           {selectedSiteId && (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-guard">
                   <UserPlus className="h-4 w-4 mr-2" />
@@ -161,11 +243,14 @@ export default function UsersPage() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>새 근무자 등록</DialogTitle>
+                  <DialogDescription>
+                    새로운 근무자를 등록합니다.
+                  </DialogDescription>
                 </DialogHeader>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <Form {...createForm}>
+                  <form onSubmit={createForm.handleSubmit((data) => createGuardMutation.mutate(data))} className="space-y-4">
                     <FormField
-                      control={form.control}
+                      control={createForm.control}
                       name="name"
                       render={({ field }) => (
                         <FormItem>
@@ -185,7 +270,7 @@ export default function UsersPage() {
                       )}
                     />
                     <FormField
-                      control={form.control}
+                      control={createForm.control}
                       name="phone"
                       render={({ field }) => (
                         <FormItem>
@@ -218,7 +303,7 @@ export default function UsersPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => setDialogOpen(false)}
+                        onClick={() => setCreateDialogOpen(false)}
                       >
                         취소
                       </Button>
@@ -256,68 +341,155 @@ export default function UsersPage() {
           </p>
         </div>
       ) : (
-        <UserTable
-          title={selectedSite?.name || ""}
-          users={siteGuards}
-        />
-      )}
-    </div>
-  );
-}
-
-function UserTable({
-  title,
-  users,
-}: {
-  title: string;
-  users: User[];
-}) {
-  return (
-    <div className="rounded-lg border bg-card overflow-hidden">
-      <div className="p-4 border-b bg-muted/30 flex items-center justify-between gap-4">
-        <h3 className="font-semibold">{title}</h3>
-        <span className="text-sm text-muted-foreground">{users.length}명</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="p-3 text-left font-medium">이름</th>
-              <th className="p-3 text-left font-medium">아이디</th>
-              <th className="p-3 text-left font-medium">연락처</th>
-              <th className="p-3 text-center font-medium">상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                  등록된 근무자가 없습니다
-                </td>
-              </tr>
-            ) : (
-              users.map((user) => (
-                <tr key={user.id} className="border-t hover-elevate" data-testid={`row-user-${user.id}`}>
-                  <td className="p-3 font-medium">{user.name}</td>
-                  <td className="p-3 text-muted-foreground">{user.username}</td>
-                  <td className="p-3 text-muted-foreground">{user.phone || "-"}</td>
-                  <td className="p-3 text-center">
-                    <span
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        user.isActive
-                          ? "bg-green-500/10 text-green-600"
-                          : "bg-red-500/10 text-red-600"
-                      }`}
-                    >
-                      {user.isActive ? "활성" : "비활성"}
-                    </span>
-                  </td>
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <div className="p-4 border-b bg-muted/30 flex items-center justify-between gap-4">
+            <h3 className="font-semibold">{selectedSite?.name || ""}</h3>
+            <span className="text-sm text-muted-foreground">{siteGuards.length}명</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="p-3 text-left font-medium">이름</th>
+                  <th className="p-3 text-left font-medium">아이디</th>
+                  <th className="p-3 text-left font-medium">연락처</th>
+                  <th className="p-3 text-center font-medium">관리</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {siteGuards.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                      등록된 근무자가 없습니다
+                    </td>
+                  </tr>
+                ) : (
+                  siteGuards.map((user) => (
+                    <tr key={user.id} className="border-t hover-elevate" data-testid={`row-user-${user.id}`}>
+                      <td className="p-3 font-medium">{user.name}</td>
+                      <td className="p-3 text-muted-foreground">{user.username}</td>
+                      <td className="p-3 text-muted-foreground">{user.phone || "-"}</td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleEdit(user)}
+                            data-testid={`button-edit-user-${user.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleDelete(user)}
+                            data-testid={`button-delete-user-${user.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>근무자 수정</DialogTitle>
+            <DialogDescription>
+              근무자 정보를 수정합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit((data) => updateGuardMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>이름 (로그인 아이디)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="홍길동"
+                        data-testid="input-edit-guard-name"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>전화번호</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="010-1234-5678"
+                        data-testid="input-edit-guard-phone"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      전화번호 변경 시 비밀번호도 끝 4자리로 변경됩니다
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditDialogOpen(false)}
+                >
+                  취소
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateGuardMutation.isPending}
+                  data-testid="button-submit-edit-guard"
+                >
+                  {updateGuardMutation.isPending ? "수정 중..." : "수정"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>근무자 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedUser?.name} 근무자를 삭제하시겠습니까?
+              <br />
+              삭제된 근무자는 더 이상 로그인할 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteGuardMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-guard"
+            >
+              {deleteGuardMutation.isPending ? "삭제 중..." : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

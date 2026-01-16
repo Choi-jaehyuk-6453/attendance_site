@@ -121,6 +121,55 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, phone, siteId, isActive } = req.body;
+      
+      const updateData: any = {};
+      if (name !== undefined) {
+        updateData.name = name;
+        updateData.username = name; // username = name for guards
+      }
+      if (phone !== undefined) {
+        updateData.phone = phone;
+        // Update password to last 4 digits of phone
+        const last4Digits = phone.replace(/\D/g, "").slice(-4);
+        if (last4Digits.length === 4) {
+          updateData.password = await bcrypt.hash(last4Digits, 10);
+        }
+      }
+      if (siteId !== undefined) updateData.siteId = siteId;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      
+      const user = await storage.updateUser(id, updateData);
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      const { password: _, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Update user error:", error);
+      res.status(500).json({ error: "사용자 수정 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.delete("/api/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      // Soft delete by setting isActive to false
+      await storage.updateUser(id, { isActive: false });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete user error:", error);
+      res.status(500).json({ error: "사용자 삭제 중 오류가 발생했습니다" });
+    }
+  });
+
   app.get("/api/sites", requireAuth, async (req, res) => {
     try {
       const sites = await storage.getSites();
