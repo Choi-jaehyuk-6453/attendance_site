@@ -390,6 +390,101 @@ export async function registerRoutes(
     }
   });
 
+  // Database setup endpoint for production
+  app.all("/api/setup-db", async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      
+      // Create enums if they don't exist
+      await pool.query(`
+        DO $$ BEGIN
+          CREATE TYPE role AS ENUM ('admin', 'guard');
+        EXCEPTION
+          WHEN duplicate_object THEN null;
+        END $$;
+      `);
+      
+      await pool.query(`
+        DO $$ BEGIN
+          CREATE TYPE company AS ENUM ('mirae_abm', 'dawon_pmc');
+        EXCEPTION
+          WHEN duplicate_object THEN null;
+        END $$;
+      `);
+      
+      await pool.query(`
+        DO $$ BEGIN
+          CREATE TYPE vacation_status AS ENUM ('pending', 'approved', 'rejected');
+        EXCEPTION
+          WHEN duplicate_object THEN null;
+        END $$;
+      `);
+      
+      // Create tables if they don't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          username TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role role NOT NULL DEFAULT 'guard',
+          company company NOT NULL DEFAULT 'mirae_abm',
+          phone TEXT,
+          site_id VARCHAR,
+          is_active BOOLEAN NOT NULL DEFAULT true
+        );
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS sites (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL,
+          address TEXT,
+          company company NOT NULL DEFAULT 'mirae_abm',
+          qr_code TEXT,
+          is_active BOOLEAN NOT NULL DEFAULT true
+        );
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS attendance_logs (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES users(id),
+          site_id VARCHAR NOT NULL REFERENCES sites(id),
+          check_in_time TIMESTAMP NOT NULL DEFAULT NOW(),
+          check_in_date DATE NOT NULL,
+          latitude TEXT,
+          longitude TEXT
+        );
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS vacation_requests (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES users(id),
+          start_date DATE NOT NULL,
+          end_date DATE NOT NULL,
+          reason TEXT,
+          status vacation_status NOT NULL DEFAULT 'pending',
+          requested_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          responded_at TIMESTAMP,
+          responded_by VARCHAR REFERENCES users(id)
+        );
+      `);
+      
+      res.json({ 
+        message: "데이터베이스 테이블이 성공적으로 생성되었습니다.",
+        success: true 
+      });
+    } catch (error) {
+      console.error("Setup DB error:", error);
+      res.status(500).json({ 
+        error: "데이터베이스 설정 중 오류가 발생했습니다",
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   app.all("/api/init-admin", async (req, res) => {
     try {
       const existingUsers = await storage.getUsers();
