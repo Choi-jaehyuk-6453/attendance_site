@@ -287,7 +287,7 @@ export default function GuardHome() {
               </span>
               <span className="text-2xl font-bold">
                 {monthLogs.length}
-                <span className="text-base font-normal text-muted-foreground ml-1">일</span>
+                <span className="text-base font-normal text-muted-foreground ml-1">일 / {monthLogs.length}회</span>
               </span>
             </div>
             {monthLogs.length > 0 && (
