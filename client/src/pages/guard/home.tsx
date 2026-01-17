@@ -96,7 +96,8 @@ export default function GuardHome() {
     onSuccess: (data) => {
       setTodayCheckedIn(true);
       setShowScanner(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/today", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", user?.id, currentMonth] });
       toast({
         title: "출근 완료!",
         description: `${data.siteName}에 출근 처리되었습니다.`,

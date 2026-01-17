@@ -26,8 +26,33 @@ export function AttendanceGrid({
   const daysInMonth = getDaysInMonth(selectedMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const filteredUsers = users.filter((u) => u.company === company && u.role === "guard" && u.isActive);
+  const activeUsers = users.filter((u) => u.company === company && u.role === "guard" && u.isActive);
   const companySites = sites.filter((s) => s.company === company && s.isActive);
+  
+  const usersWithAttendanceInMonth = useMemo(() => {
+    const monthStart = startOfMonth(selectedMonth);
+    const userIdsWithAttendance = new Set<string>();
+    
+    attendanceLogs.forEach((log) => {
+      if (selectedSiteId && log.siteId !== selectedSiteId) return;
+      const logDate = new Date(log.checkInDate);
+      if (
+        logDate.getFullYear() === monthStart.getFullYear() &&
+        logDate.getMonth() === monthStart.getMonth()
+      ) {
+        userIdsWithAttendance.add(log.userId);
+      }
+    });
+    
+    return users.filter((u) => 
+      u.company === company && 
+      u.role === "guard" && 
+      !u.isActive && 
+      userIdsWithAttendance.has(u.id)
+    );
+  }, [users, attendanceLogs, selectedMonth, selectedSiteId, company]);
+
+  const filteredUsers = [...activeUsers, ...usersWithAttendanceInMonth];
 
   const sitesWithUsers = useMemo(() => {
     const siteUserMap = new Map<string, { site: Site; users: User[] }>();
@@ -85,7 +110,7 @@ export function AttendanceGrid({
   const companyName = company === "mirae_abm" ? "㈜미래에이비엠" : "㈜다원피엠씨";
   const logoPath = company === "mirae_abm" ? miraeLogoPath : dawonLogoPath;
 
-  const totalUsers = filteredUsers.length;
+  const totalActiveUsers = activeUsers.length;
   const siteName = selectedSiteId 
     ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
     : "전체 현장";
@@ -109,7 +134,7 @@ export function AttendanceGrid({
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="text-muted-foreground">현장명: <strong className="text-foreground">{siteName}</strong></span>
-            <span className="text-muted-foreground">인원: <strong className="text-foreground">{totalUsers}명</strong></span>
+            <span className="text-muted-foreground">인원: <strong className="text-foreground">{totalActiveUsers}명</strong></span>
           </div>
         </div>
       </div>
@@ -133,7 +158,7 @@ export function AttendanceGrid({
               </tr>
             </thead>
             <tbody>
-              {totalUsers === 0 ? (
+              {filteredUsers.length === 0 ? (
                 <tr>
                   <td
                     colSpan={daysInMonth + 1}
