@@ -198,6 +198,14 @@ export default function AdminVacationStatus() {
             <Plus className="h-4 w-4 mr-1" />
             휴가 추가
           </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => window.open(`/api/vacation-status-pdf?siteId=${selectedSiteId}&year=${selectedYear}`, "_blank")}
+            data-testid="button-pdf-status"
+          >
+            <FileDown className="h-4 w-4 mr-1" />
+            PDF 출력
+          </Button>
           <Button variant="outline" onClick={() => setEmailDialogOpen(true)} data-testid="button-email-status">
             <Mail className="h-4 w-4 mr-1" />
             이메일 발송

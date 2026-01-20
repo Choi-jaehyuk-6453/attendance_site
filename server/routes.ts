@@ -1133,6 +1133,38 @@ export async function registerRoutes(
     }
   });
 
+  // Download vacation status PDF (admin)
+  app.get("/api/vacation-status-pdf", requireAdmin, async (req, res) => {
+    try {
+      const { siteId, year } = req.query;
+      
+      const users = await storage.getUsers();
+      const sites = await storage.getSites();
+      const vacations = await storage.getVacationRequests();
+      
+      const selectedSite = siteId && siteId !== "all" ? sites.find(s => s.id === siteId) : null;
+      const siteName = selectedSite?.name || "전체";
+      const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
+      
+      const pdfBuffer = await generateVacationStatusPdf({
+        users,
+        sites,
+        vacations,
+        siteId: siteId && siteId !== "all" ? siteId as string : undefined,
+        year: targetYear,
+      });
+      
+      const fileName = `휴가현황_${siteName}_${targetYear}년.pdf`;
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Download vacation status PDF error:", error);
+      res.status(500).json({ error: "PDF 생성 중 오류가 발생했습니다" });
+    }
+  });
+
   // Send vacation PDF email (admin)
   app.post("/api/send-vacation-email", requireAdmin, async (req, res) => {
     try {
