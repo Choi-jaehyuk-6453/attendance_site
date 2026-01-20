@@ -157,45 +157,6 @@ export function ExportButtons({
   const generatePdfBlob = async (): Promise<{ blob: Blob; base64: string }> => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     
-    let fontLoaded = false;
-    
-    const fontUrls = [
-      "/fonts/NotoSansKR-Regular.ttf",
-      "https://cdn.jsdelivr.net/npm/@aspect-build/aspect-rules-jest@0.19.6/scripts/fonts/NotoSansKR-Regular.ttf",
-      "https://fastly.jsdelivr.net/gh/nicenorm/noto-sans-korean@main/fonts/NotoSansKR-Regular.ttf",
-    ];
-    
-    for (const fontUrl of fontUrls) {
-      if (fontLoaded) break;
-      try {
-        const response = await fetch(fontUrl);
-        if (!response.ok) continue;
-        
-        const arrayBuffer = await response.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        let binaryString = '';
-        for (let i = 0; i < uint8Array.length; i++) {
-          binaryString += String.fromCharCode(uint8Array[i]);
-        }
-        const base64 = btoa(binaryString);
-        
-        doc.addFileToVFS("NotoSansKR-Regular.ttf", base64);
-        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "normal");
-        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "bold");
-        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "italic");
-        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "bolditalic");
-        doc.setFont("NotoSansKR", "normal");
-        fontLoaded = true;
-        console.log("Korean font loaded successfully from:", fontUrl);
-      } catch (error) {
-        console.warn("Failed to load font from:", fontUrl, error);
-      }
-    }
-    
-    if (!fontLoaded) {
-      console.error("Could not load Korean font from any source");
-    }
-    
     const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
     let firstPage = true;
 
@@ -209,51 +170,36 @@ export function ExportButtons({
       }
       firstPage = false;
 
-      const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
+      const companyName = company === "mirae_abm" ? "MIRAE ABM" : "DAWON PMC";
 
-      if (fontLoaded) {
-        doc.setFont("NotoSansKR", "normal");
-      }
       doc.setFontSize(14);
       doc.text(
-        `${companyName} 근무자 출근기록부 - ${format(selectedMonth, "yyyy년 M월", { locale: ko })}`,
+        `${companyName} Attendance Record - ${format(selectedMonth, "yyyy-MM")}`,
         14,
         15
       );
       doc.setFontSize(10);
-      doc.text(`현장: ${siteName}  |  인원: ${filteredUsers.length}명`, 14, 22);
+      doc.text(`Site: ${siteName}  |  Staff: ${filteredUsers.length}`, 14, 22);
 
       const tableData = filteredUsers.map((user) => {
         const userAttendance = attendanceMap.get(user.id) || new Set();
         return [user.name, ...days.map((day) => (userAttendance.has(day) ? "O" : ""))];
       });
 
-      const fontName = fontLoaded ? "NotoSansKR" : "helvetica";
-      
       autoTable(doc, {
         startY: 28,
-        head: [["성명", ...days.map(String)]],
+        head: [["Name", ...days.map(String)]],
         body: tableData,
         styles: { 
           fontSize: 7, 
           cellPadding: 1,
-          font: fontName,
-          fontStyle: "normal",
         },
         headStyles: { 
           fillColor: [41, 128, 185], 
-          font: fontName,
-          fontStyle: "normal",
-        },
-        bodyStyles: {
-          font: fontName,
-          fontStyle: "normal",
         },
         columnStyles: { 
           0: { 
             cellWidth: 25,
-            font: fontName,
-            fontStyle: "normal",
           } 
         },
       });
