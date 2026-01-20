@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -119,8 +120,15 @@ app.use(express.urlencoded({ extended: false }));
 // Trust proxy for production (Replit uses reverse proxy)
 app.set("trust proxy", 1);
 
+const PgSession = connectPgSimple(session);
+
 app.use(
   session({
+    store: new PgSession({
+      pool: pool,
+      tableName: "session",
+      createTableIfMissing: true,
+    }),
     secret: process.env.SESSION_SECRET || "attendance-secret-key-change-in-production",
     resave: false,
     saveUninitialized: false,
