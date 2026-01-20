@@ -1,9 +1,5 @@
 import nodemailer from "nodemailer";
 
-console.log("Email config - NAVER_EMAIL:", process.env.NAVER_EMAIL);
-console.log("Email config - PASSWORD exists:", !!process.env.NAVER_EMAIL_PASSWORD);
-console.log("Email config - PASSWORD length:", process.env.NAVER_EMAIL_PASSWORD?.length || 0);
-
 const transporter = nodemailer.createTransport({
   host: "smtp.naver.com",
   port: 587,
