@@ -221,10 +221,13 @@ export default function UsersPage() {
   const activeSites = sites.filter(s => s.isActive);
 
   const selectedSite = activeSites.find(s => s.id === selectedSiteId);
-  const siteGuards = selectedSiteId 
-    ? guards.filter(g => g.siteId === selectedSiteId)
-    : [];
+  const siteGuards = selectedSiteId === "unassigned"
+    ? guards.filter(g => !g.siteId)
+    : selectedSiteId 
+      ? guards.filter(g => g.siteId === selectedSiteId)
+      : [];
   const activeGuardsCount = siteGuards.filter(g => g.isActive).length;
+  const unassignedGuards = guards.filter(g => !g.siteId);
 
   if (isLoading) {
     return (
@@ -240,9 +243,11 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold">근무자 관리</h1>
           <p className="text-muted-foreground">
-            {selectedSite 
-              ? `${selectedSite.name} - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
-              : "현장을 선택해주세요"
+            {selectedSiteId === "unassigned"
+              ? `미배정 - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
+              : selectedSite 
+                ? `${selectedSite.name} - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
+                : "현장을 선택해주세요"
             }
           </p>
         </div>
@@ -260,9 +265,14 @@ export default function UsersPage() {
                   {site.name}
                 </SelectItem>
               ))}
+              {unassignedGuards.length > 0 && (
+                <SelectItem value="unassigned">
+                  미배정 ({unassignedGuards.length}명)
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
-          {selectedSiteId && (
+          {selectedSiteId && selectedSiteId !== "unassigned" && (
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-guard">
@@ -373,7 +383,7 @@ export default function UsersPage() {
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="p-4 border-b bg-muted/30 flex items-center justify-between gap-4">
-            <h3 className="font-semibold">{selectedSite?.name || ""}</h3>
+            <h3 className="font-semibold">{selectedSiteId === "unassigned" ? "미배정" : selectedSite?.name || ""}</h3>
             <span className="text-sm text-muted-foreground">
               활성 {activeGuardsCount}명 / 전체 {siteGuards.length}명
             </span>
