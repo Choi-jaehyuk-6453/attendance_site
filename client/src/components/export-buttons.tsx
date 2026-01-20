@@ -183,7 +183,10 @@ export function ExportButtons({
         
         doc.addFileToVFS("NotoSansKR-Regular.ttf", base64);
         doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "normal");
-        doc.setFont("NotoSansKR");
+        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "bold");
+        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "italic");
+        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "bolditalic");
+        doc.setFont("NotoSansKR", "normal");
         fontLoaded = true;
         console.log("Korean font loaded successfully from:", fontUrl);
       } catch (error) {
@@ -211,7 +214,7 @@ export function ExportButtons({
       const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
 
       if (fontLoaded) {
-        doc.setFont("NotoSansKR");
+        doc.setFont("NotoSansKR", "normal");
       }
       doc.setFontSize(14);
       doc.text(
