@@ -259,12 +259,7 @@ export default function GuardHome() {
           size="lg"
           variant="outline"
           className="w-full h-14 text-lg rounded-xl"
-          onClick={() => {
-            toast({
-              title: "준비중",
-              description: "휴가신청 기능은 현재 준비중입니다.",
-            });
-          }}
+          onClick={() => setLocation("/guard/vacation")}
           data-testid="button-vacation-request"
         >
           <span className="flex items-center gap-3">

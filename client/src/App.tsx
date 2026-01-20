@@ -15,6 +15,9 @@ import QRManagementPage from "@/pages/admin/qr-management";
 import UsersPage from "@/pages/admin/users";
 import ContactsPage from "@/pages/admin/contacts";
 import GuardHome from "@/pages/guard/home";
+import GuardVacation from "@/pages/guard/vacation";
+import AdminVacationRequests from "@/pages/admin/vacation-requests";
+import AdminVacationStatus from "@/pages/admin/vacation-status";
 
 function AdminLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -123,8 +126,17 @@ function Router() {
       <Route path="/admin/contacts">
         <ProtectedAdminRoute component={ContactsPage} />
       </Route>
+      <Route path="/admin/vacation-requests">
+        <ProtectedAdminRoute component={AdminVacationRequests} />
+      </Route>
+      <Route path="/admin/vacation-status">
+        <ProtectedAdminRoute component={AdminVacationStatus} />
+      </Route>
       <Route path="/guard">
         <ProtectedGuardRoute component={GuardHome} />
+      </Route>
+      <Route path="/guard/vacation">
+        <ProtectedGuardRoute component={GuardVacation} />
       </Route>
       <Route component={NotFound} />
     </Switch>

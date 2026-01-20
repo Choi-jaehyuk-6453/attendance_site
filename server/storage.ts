@@ -43,6 +43,7 @@ export interface IStorage {
   getVacationRequestsByUser(userId: string): Promise<VacationRequest[]>;
   createVacationRequest(request: InsertVacationRequest): Promise<VacationRequest>;
   updateVacationRequest(id: string, data: Partial<VacationRequest>): Promise<VacationRequest | undefined>;
+  deleteVacationRequest(id: string): Promise<void>;
   
   getContacts(): Promise<Contact[]>;
   getContact(id: string): Promise<Contact | undefined>;
@@ -192,6 +193,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(vacationRequests.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  async deleteVacationRequest(id: string): Promise<void> {
+    await db.delete(vacationRequests).where(eq(vacationRequests.id, id));
   }
 
   async getContacts(): Promise<Contact[]> {

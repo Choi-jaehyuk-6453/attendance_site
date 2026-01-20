@@ -1,13 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema } from "@shared/schema";
+import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema, insertVacationRequestSchema } from "@shared/schema";
 import { sendEmail } from "./email";
 import { generateAttendancePdf } from "./pdf-generator";
+import { generateVacationPdf, generateVacationStatusPdf } from "./vacation-pdf-generator";
 import { z } from "zod";
-import { startOfMonth, endOfMonth, format } from "date-fns";
+import { startOfMonth, endOfMonth, format, differenceInDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import bcrypt from "bcryptjs";
+import { calculateAnnualLeave } from "@shared/leave-utils";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
@@ -834,6 +836,390 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Init admin error:", error);
       res.status(500).json({ error: "관리자 계정 초기화 중 오류가 발생했습니다" });
+    }
+  });
+
+  // ========== Vacation Management API ==========
+  
+  // Get all vacation requests (admin)
+  app.get("/api/vacations", requireAdmin, async (req, res) => {
+    try {
+      const { status, userId, siteId } = req.query;
+      let vacations = await storage.getVacationRequests();
+      
+      if (status && typeof status === "string") {
+        vacations = vacations.filter(v => v.status === status);
+      }
+      
+      if (userId && typeof userId === "string") {
+        vacations = vacations.filter(v => v.userId === userId);
+      }
+      
+      if (siteId && typeof siteId === "string") {
+        const users = await storage.getUsers();
+        const siteUserIds = users.filter(u => u.siteId === siteId).map(u => u.id);
+        vacations = vacations.filter(v => siteUserIds.includes(v.userId));
+      }
+      
+      res.json(vacations);
+    } catch (error) {
+      console.error("Get vacations error:", error);
+      res.status(500).json({ error: "휴가 신청 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  // Get user's own vacation requests (guard)
+  app.get("/api/vacations/my", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const vacations = await storage.getVacationRequestsByUser(userId);
+      res.json(vacations);
+    } catch (error) {
+      console.error("Get my vacations error:", error);
+      res.status(500).json({ error: "휴가 신청 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  // Get user's leave balance
+  app.get("/api/vacations/balance", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      
+      if (!user.hireDate) {
+        return res.json({
+          totalAccrued: 0,
+          totalUsed: 0,
+          totalRemaining: 0,
+          accruals: [],
+          yearsOfService: 0,
+          monthsOfService: 0,
+          message: "입사일이 설정되지 않았습니다",
+        });
+      }
+      
+      const vacations = await storage.getVacationRequestsByUser(userId);
+      const approvedVacations = vacations.filter(v => v.status === "approved");
+      const usedDays = approvedVacations.reduce((sum, v) => sum + (v.days || 1), 0);
+      
+      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
+      res.json(balance);
+    } catch (error) {
+      console.error("Get leave balance error:", error);
+      res.status(500).json({ error: "연차 잔여일수를 계산하는데 실패했습니다" });
+    }
+  });
+
+  // Get specific user's leave balance (admin)
+  app.get("/api/vacations/balance/:userId", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      
+      if (!user.hireDate) {
+        return res.json({
+          totalAccrued: 0,
+          totalUsed: 0,
+          totalRemaining: 0,
+          accruals: [],
+          yearsOfService: 0,
+          monthsOfService: 0,
+          message: "입사일이 설정되지 않았습니다",
+        });
+      }
+      
+      const vacations = await storage.getVacationRequestsByUser(userId);
+      const approvedVacations = vacations.filter(v => v.status === "approved");
+      const usedDays = approvedVacations.reduce((sum, v) => sum + (v.days || 1), 0);
+      
+      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
+      res.json(balance);
+    } catch (error) {
+      console.error("Get user leave balance error:", error);
+      res.status(500).json({ error: "연차 잔여일수를 계산하는데 실패했습니다" });
+    }
+  });
+
+  // Create vacation request (guard)
+  app.post("/api/vacations", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { vacationType, startDate, endDate, reason } = req.body;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "시작일과 종료일을 입력해주세요" });
+      }
+      
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const days = vacationType === "half_day" ? 0.5 : differenceInDays(end, start) + 1;
+      
+      const vacation = await storage.createVacationRequest({
+        userId,
+        vacationType: vacationType || "annual",
+        startDate,
+        endDate,
+        days,
+        reason: reason || null,
+      });
+      
+      res.status(201).json(vacation);
+    } catch (error) {
+      console.error("Create vacation request error:", error);
+      res.status(500).json({ error: "휴가 신청 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Approve vacation request (admin)
+  app.patch("/api/vacations/:id/approve", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const adminId = req.session.userId!;
+      
+      const vacation = await storage.updateVacationRequest(id, {
+        status: "approved",
+        respondedAt: new Date(),
+        respondedBy: adminId,
+      });
+      
+      if (!vacation) {
+        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
+      }
+      
+      res.json(vacation);
+    } catch (error) {
+      console.error("Approve vacation error:", error);
+      res.status(500).json({ error: "휴가 승인 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Reject vacation request (admin)
+  app.patch("/api/vacations/:id/reject", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { rejectionReason } = req.body;
+      const adminId = req.session.userId!;
+      
+      const vacation = await storage.updateVacationRequest(id, {
+        status: "rejected",
+        respondedAt: new Date(),
+        respondedBy: adminId,
+        rejectionReason: rejectionReason || null,
+      });
+      
+      if (!vacation) {
+        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
+      }
+      
+      res.json(vacation);
+    } catch (error) {
+      console.error("Reject vacation error:", error);
+      res.status(500).json({ error: "휴가 반려 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Update vacation request (admin)
+  app.patch("/api/vacations/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { vacationType, startDate, endDate, days, reason, status } = req.body;
+      
+      const updateData: any = {};
+      if (vacationType !== undefined) updateData.vacationType = vacationType;
+      if (startDate !== undefined) updateData.startDate = startDate;
+      if (endDate !== undefined) updateData.endDate = endDate;
+      if (days !== undefined) updateData.days = days;
+      if (reason !== undefined) updateData.reason = reason;
+      if (status !== undefined) updateData.status = status;
+      
+      const vacation = await storage.updateVacationRequest(id, updateData);
+      
+      if (!vacation) {
+        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
+      }
+      
+      res.json(vacation);
+    } catch (error) {
+      console.error("Update vacation error:", error);
+      res.status(500).json({ error: "휴가 수정 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Delete vacation request (admin)
+  app.delete("/api/vacations/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteVacationRequest(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete vacation error:", error);
+      res.status(500).json({ error: "휴가 삭제 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Send vacation PDF email (admin)
+  app.post("/api/send-vacation-email", requireAdmin, async (req, res) => {
+    try {
+      const { contactIds, vacationId } = req.body;
+      
+      if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ error: "수신자를 선택해주세요" });
+      }
+      
+      if (!vacationId) {
+        return res.status(400).json({ error: "휴가 신청을 선택해주세요" });
+      }
+      
+      const contacts = await storage.getContacts();
+      const selectedContacts = contacts.filter(c => contactIds.includes(c.id));
+      
+      if (selectedContacts.length === 0) {
+        return res.status(400).json({ error: "유효한 수신자가 없습니다" });
+      }
+      
+      const emailAddresses = selectedContacts.map(c => c.email);
+      const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
+      
+      const vacations = await storage.getVacationRequests();
+      const vacation = vacations.find(v => v.id === vacationId);
+      
+      if (!vacation) {
+        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
+      }
+      
+      const users = await storage.getUsers();
+      const user = users.find(u => u.id === vacation.userId);
+      const sites = await storage.getSites();
+      const site = user?.siteId ? sites.find(s => s.id === user.siteId) : null;
+      
+      const pdfBuffer = await generateVacationPdf({
+        vacation,
+        user: user!,
+        site,
+      });
+      
+      const fileName = `휴가신청서_${user?.name}_${format(new Date(vacation.startDate), "yyyy-MM-dd")}.pdf`;
+      
+      const success = await sendEmail({
+        to: emailAddresses,
+        subject: `[휴가신청서] ${user?.name} - ${format(new Date(vacation.startDate), "yyyy년 M월 d일", { locale: ko })}`,
+        html: `
+          <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
+            <h2>휴가신청서 발송</h2>
+            <p><strong>신청자:</strong> ${user?.name}</p>
+            <p><strong>현장:</strong> ${site?.name || "미배정"}</p>
+            <p><strong>기간:</strong> ${format(new Date(vacation.startDate), "yyyy년 M월 d일", { locale: ko })} ~ ${format(new Date(vacation.endDate), "yyyy년 M월 d일", { locale: ko })}</p>
+            <p><strong>일수:</strong> ${vacation.days}일</p>
+            <p><strong>사유:</strong> ${vacation.reason || "-"}</p>
+            <br/>
+            <p>첨부된 PDF 파일을 확인해 주세요.</p>
+            <br/>
+            <p style="color: #666; font-size: 12px;">본 메일은 경비원 근태관리 시스템에서 자동 발송되었습니다.</p>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+      
+      if (success) {
+        res.json({ 
+          message: `${selectedContacts.length}명에게 이메일을 발송했습니다`,
+          recipients: recipientNames
+        });
+      } else {
+        res.status(500).json({ error: "이메일 발송에 실패했습니다" });
+      }
+    } catch (error) {
+      console.error("Send vacation email error:", error);
+      res.status(500).json({ error: "이메일 발송 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Send vacation status PDF email (admin)
+  app.post("/api/send-vacation-status-email", requireAdmin, async (req, res) => {
+    try {
+      const { contactIds, siteId, year } = req.body;
+      
+      if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ error: "수신자를 선택해주세요" });
+      }
+      
+      const contacts = await storage.getContacts();
+      const selectedContacts = contacts.filter(c => contactIds.includes(c.id));
+      
+      if (selectedContacts.length === 0) {
+        return res.status(400).json({ error: "유효한 수신자가 없습니다" });
+      }
+      
+      const emailAddresses = selectedContacts.map(c => c.email);
+      const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
+      
+      const users = await storage.getUsers();
+      const sites = await storage.getSites();
+      const vacations = await storage.getVacationRequests();
+      
+      const selectedSite = siteId ? sites.find(s => s.id === siteId) : null;
+      const siteName = selectedSite?.name || "전체";
+      const targetYear = year || new Date().getFullYear();
+      
+      const pdfBuffer = await generateVacationStatusPdf({
+        users,
+        sites,
+        vacations,
+        siteId,
+        year: targetYear,
+      });
+      
+      const fileName = `휴가현황_${siteName}_${targetYear}년.pdf`;
+      
+      const success = await sendEmail({
+        to: emailAddresses,
+        subject: `[휴가현황] ${siteName} - ${targetYear}년`,
+        html: `
+          <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
+            <h2>휴가현황 발송</h2>
+            <p><strong>현장:</strong> ${siteName}</p>
+            <p><strong>기간:</strong> ${targetYear}년</p>
+            <p><strong>수신:</strong> ${recipientNames}</p>
+            <br/>
+            <p>첨부된 PDF 파일을 확인해 주세요.</p>
+            <br/>
+            <p style="color: #666; font-size: 12px;">본 메일은 경비원 근태관리 시스템에서 자동 발송되었습니다.</p>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: fileName,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+      
+      if (success) {
+        res.json({ 
+          message: `${selectedContacts.length}명에게 이메일을 발송했습니다`,
+          recipients: recipientNames
+        });
+      } else {
+        res.status(500).json({ error: "이메일 발송에 실패했습니다" });
+      }
+    } catch (error) {
+      console.error("Send vacation status email error:", error);
+      res.status(500).json({ error: "이메일 발송 중 오류가 발생했습니다" });
     }
   });
 

@@ -18,6 +18,7 @@ import {
   Users,
   Building2,
   CalendarDays,
+  CalendarCheck,
   LogOut,
   UserCog,
 } from "lucide-react";
@@ -40,9 +41,13 @@ const attendanceMenuItems = [
 const vacationMenuItems = [
   {
     title: "휴가 신청 현황",
-    url: "/admin/vacation",
+    url: "/admin/vacation-requests",
+    icon: CalendarCheck,
+  },
+  {
+    title: "휴가 현황",
+    url: "/admin/vacation-status",
     icon: CalendarDays,
-    disabled: true,
   },
 ];
 
@@ -112,22 +117,13 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    disabled={item.disabled}
-                    className={item.disabled ? "opacity-50 cursor-not-allowed" : ""}
-                    data-testid={`sidebar-vacation`}
+                    isActive={location === item.url}
+                    data-testid={`sidebar-${item.url.replace("/admin/", "")}`}
                   >
-                    {item.disabled ? (
-                      <div className="flex items-center gap-2">
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                        <span className="text-xs text-muted-foreground ml-auto">준비중</span>
-                      </div>
-                    ) : (
-                      <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    )}
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

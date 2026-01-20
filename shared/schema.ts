@@ -61,17 +61,21 @@ export const attendanceLogsRelations = relations(attendanceLogs, ({ one }) => ({
 }));
 
 export const vacationStatusEnum = pgEnum("vacation_status", ["pending", "approved", "rejected"]);
+export const vacationTypeEnum = pgEnum("vacation_type", ["annual", "half_day", "sick", "other"]);
 
 export const vacationRequests = pgTable("vacation_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
+  vacationType: vacationTypeEnum("vacation_type").notNull().default("annual"),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
+  days: integer("days").notNull().default(1),
   reason: text("reason"),
   status: vacationStatusEnum("status").notNull().default("pending"),
   requestedAt: timestamp("requested_at").notNull().defaultNow(),
   respondedAt: timestamp("responded_at"),
   respondedBy: varchar("responded_by").references(() => users.id),
+  rejectionReason: text("rejection_reason"),
 });
 
 export const vacationRequestsRelations = relations(vacationRequests, ({ one }) => ({
