@@ -15,6 +15,7 @@ export const users = pgTable("users", {
   company: companyEnum("company").notNull().default("mirae_abm"),
   phone: text("phone"),
   siteId: varchar("site_id"),
+  hireDate: date("hire_date"),
   isActive: boolean("is_active").notNull().default(true),
 });
 
@@ -28,6 +29,8 @@ export const sites = pgTable("sites", {
   name: text("name").notNull(),
   address: text("address"),
   company: companyEnum("company").notNull().default("mirae_abm"),
+  contractStartDate: date("contract_start_date"),
+  contractEndDate: date("contract_end_date"),
   qrCode: text("qr_code"),
   isActive: boolean("is_active").notNull().default(true),
 });

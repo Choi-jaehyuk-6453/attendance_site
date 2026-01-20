@@ -38,6 +38,8 @@ const siteSchema = z.object({
   name: z.string().min(1, "현장명을 입력해주세요"),
   address: z.string().optional(),
   company: z.enum(["mirae_abm", "dawon_pmc"]),
+  contractStartDate: z.string().optional(),
+  contractEndDate: z.string().optional(),
 });
 
 type SiteForm = z.infer<typeof siteSchema>;
@@ -56,6 +58,8 @@ export default function SitesPage() {
       name: "",
       address: "",
       company: "mirae_abm",
+      contractStartDate: "",
+      contractEndDate: "",
     },
   });
 
@@ -187,6 +191,42 @@ export default function SitesPage() {
                     </FormItem>
                   )}
                 />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="contractStartDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>계약 시작일</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            data-testid="input-contract-start"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="contractEndDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>계약 종료일</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            data-testid="input-contract-end"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <Button
                   type="submit"
                   className="w-full"

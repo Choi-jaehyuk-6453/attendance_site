@@ -54,6 +54,7 @@ import type { User, Site } from "@shared/schema";
 const guardSchema = z.object({
   name: z.string().min(1, "이름을 입력해주세요"),
   phone: z.string().min(4, "전화번호를 입력해주세요 (최소 4자리)"),
+  hireDate: z.string().optional(),
 });
 
 const editGuardSchema = guardSchema.extend({
@@ -84,6 +85,7 @@ export default function UsersPage() {
     defaultValues: {
       name: "",
       phone: "",
+      hireDate: "",
     },
   });
 
@@ -92,6 +94,7 @@ export default function UsersPage() {
     defaultValues: {
       name: "",
       phone: "",
+      hireDate: "",
       siteId: "",
     },
   });
@@ -111,6 +114,7 @@ export default function UsersPage() {
         password: last4Digits,
         name: data.name,
         phone: data.phone,
+        hireDate: data.hireDate || null,
         siteId: selectedSiteId,
         role: "guard",
         company: "mirae_abm",
@@ -141,6 +145,7 @@ export default function UsersPage() {
       const res = await apiRequest("PATCH", `/api/users/${selectedUser.id}`, {
         name: data.name,
         phone: data.phone,
+        hireDate: data.hireDate || null,
         siteId: data.siteId === "none" ? null : data.siteId,
       });
       return res.json();
@@ -214,6 +219,7 @@ export default function UsersPage() {
     editForm.reset({
       name: user.name,
       phone: user.phone || "",
+      hireDate: user.hireDate || "",
       siteId: user.siteId || "none",
     });
     setEditDialogOpen(true);
@@ -333,6 +339,23 @@ export default function UsersPage() {
                           <FormDescription>
                             전화번호 끝 4자리가 비밀번호로 설정됩니다
                           </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={createForm.control}
+                      name="hireDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>입사일</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              data-testid="input-guard-hire-date"
+                              {...field}
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -533,6 +556,23 @@ export default function UsersPage() {
                     <FormDescription>
                       전화번호 변경 시 비밀번호도 끝 4자리로 변경됩니다
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="hireDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>입사일</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        data-testid="input-edit-guard-hire-date"
+                        {...field}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

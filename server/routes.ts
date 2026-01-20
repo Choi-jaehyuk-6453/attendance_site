@@ -143,7 +143,7 @@ export async function registerRoutes(
   app.patch("/api/users/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, phone, siteId, isActive } = req.body;
+      const { name, phone, hireDate, siteId, isActive } = req.body;
       
       const updateData: any = {};
       if (name !== undefined) {
@@ -158,6 +158,7 @@ export async function registerRoutes(
           updateData.password = await bcrypt.hash(last4Digits, 10);
         }
       }
+      if (hireDate !== undefined) updateData.hireDate = hireDate;
       if (siteId !== undefined) updateData.siteId = siteId;
       if (isActive !== undefined) updateData.isActive = isActive;
       
