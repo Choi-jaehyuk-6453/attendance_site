@@ -1,6 +1,8 @@
 import PDFDocument from "pdfkit";
 import { format, getDaysInMonth, startOfMonth, getDate } from "date-fns";
 import { ko } from "date-fns/locale";
+import fs from "fs";
+import path from "path";
 import type { User, AttendanceLog, Site } from "@shared/schema";
 
 interface GeneratePdfOptions {
@@ -15,7 +17,7 @@ export async function generateAttendancePdf(options: GeneratePdfOptions): Promis
   const { users, attendanceLogs, sites, selectedMonth, selectedSiteId } = options;
   
   const selectedSite = sites.find(s => s.id === selectedSiteId);
-  const siteName = selectedSite?.name || "All Sites";
+  const siteName = selectedSite?.name || "전체";
   
   return new Promise((resolve, reject) => {
     try {
@@ -30,7 +32,21 @@ export async function generateAttendancePdf(options: GeneratePdfOptions): Promis
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
       
-      doc.font("Helvetica");
+      const fontPath = path.join(process.cwd(), "client/public/fonts/NotoSansKR-Regular.ttf");
+      
+      if (fs.existsSync(fontPath)) {
+        try {
+          doc.registerFont("Korean", fontPath);
+          doc.font("Korean");
+          console.log("Korean font loaded successfully");
+        } catch (fontError) {
+          console.warn("Failed to load Korean font, using Helvetica:", fontError);
+          doc.font("Helvetica");
+        }
+      } else {
+        console.warn("Font file not found:", fontPath);
+        doc.font("Helvetica");
+      }
       
       const generateData = (company: "mirae_abm" | "dawon_pmc") => {
         const daysInMonth = getDaysInMonth(selectedMonth);
@@ -81,29 +97,29 @@ export async function generateAttendancePdf(options: GeneratePdfOptions): Promis
         }
         firstPage = false;
 
-        const companyName = company === "mirae_abm" ? "MIRAE ABM" : "DAWON PMC";
-        const monthString = format(selectedMonth, "yyyy-MM");
+        const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
+        const monthString = format(selectedMonth, "yyyy년 M월", { locale: ko });
         
         doc.fontSize(14).text(
-          `${companyName} Attendance Record - ${monthString}`,
+          `${companyName} 근무자 출근기록부 - ${monthString}`,
           30,
           30
         );
         doc.fontSize(10).text(
-          `Site: ${siteName}  |  Staff: ${filteredUsers.length}`,
+          `현장: ${siteName}  |  인원: ${filteredUsers.length}명`,
           30,
           50
         );
 
         const tableTop = 70;
-        const nameColWidth = 80;
+        const nameColWidth = 70;
         const dayColWidth = 20;
         const rowHeight = 16;
         
         doc.fontSize(7);
         
         doc.rect(30, tableTop, nameColWidth, rowHeight).fillAndStroke("#2980b9", "#2980b9");
-        doc.fillColor("white").text("Name", 35, tableTop + 4, { width: nameColWidth - 10 });
+        doc.fillColor("white").text("성명", 35, tableTop + 4, { width: nameColWidth - 10 });
         
         days.forEach((day, i) => {
           const x = 30 + nameColWidth + (i * dayColWidth);

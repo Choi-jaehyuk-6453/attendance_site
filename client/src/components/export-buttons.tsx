@@ -157,6 +157,32 @@ export function ExportButtons({
   const generatePdfBlob = async (): Promise<{ blob: Blob; base64: string }> => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     
+    let fontLoaded = false;
+    
+    try {
+      const response = await fetch("/fonts/NotoSansKR-Regular.ttf");
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        if (arrayBuffer.byteLength > 100000) {
+          const uint8Array = new Uint8Array(arrayBuffer);
+          let binaryString = '';
+          const chunkSize = 8192;
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+            binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+          }
+          const base64Font = btoa(binaryString);
+          
+          doc.addFileToVFS("NotoSansKR.ttf", base64Font);
+          doc.addFont("NotoSansKR.ttf", "NotoSansKR", "normal");
+          doc.setFont("NotoSansKR", "normal");
+          fontLoaded = true;
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load Korean font:", error);
+    }
+    
     const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
     let firstPage = true;
 
@@ -170,16 +196,19 @@ export function ExportButtons({
       }
       firstPage = false;
 
-      const companyName = company === "mirae_abm" ? "MIRAE ABM" : "DAWON PMC";
+      const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
 
+      if (fontLoaded) {
+        doc.setFont("NotoSansKR", "normal");
+      }
       doc.setFontSize(14);
       doc.text(
-        `${companyName} Attendance Record - ${format(selectedMonth, "yyyy-MM")}`,
+        `${companyName} 근무자 출근기록부 - ${format(selectedMonth, "yyyy년 M월", { locale: ko })}`,
         14,
         15
       );
       doc.setFontSize(10);
-      doc.text(`Site: ${siteName}  |  Staff: ${filteredUsers.length}`, 14, 22);
+      doc.text(`현장: ${siteName}  |  인원: ${filteredUsers.length}명`, 14, 22);
 
       const tableData = filteredUsers.map((user) => {
         const userAttendance = attendanceMap.get(user.id) || new Set();
@@ -188,11 +217,12 @@ export function ExportButtons({
 
       autoTable(doc, {
         startY: 28,
-        head: [["Name", ...days.map(String)]],
+        head: [["성명", ...days.map(String)]],
         body: tableData,
         styles: { 
           fontSize: 7, 
           cellPadding: 1,
+          font: fontLoaded ? "NotoSansKR" : "helvetica",
         },
         headStyles: { 
           fillColor: [41, 128, 185], 
