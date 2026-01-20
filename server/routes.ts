@@ -948,11 +948,17 @@ export async function registerRoutes(
     }
   });
 
-  // Create vacation request (guard)
+  // Create vacation request (guard or admin)
   app.post("/api/vacations", requireAuth, async (req, res) => {
     try {
-      const userId = req.session.userId!;
-      const { vacationType, startDate, endDate, reason } = req.body;
+      const { vacationType, startDate, endDate, reason, userId: requestUserId } = req.body;
+      
+      // Admin can create vacation for any user, guard can only create for themselves
+      let targetUserId = req.session.userId!;
+      const isAdminCreating = requestUserId && req.session.role === "admin";
+      if (isAdminCreating) {
+        targetUserId = requestUserId;
+      }
       
       if (!startDate || !endDate) {
         return res.status(400).json({ error: "시작일과 종료일을 입력해주세요" });
@@ -962,14 +968,24 @@ export async function registerRoutes(
       const end = new Date(endDate);
       const days = vacationType === "half_day" ? 0.5 : differenceInDays(end, start) + 1;
       
-      const vacation = await storage.createVacationRequest({
-        userId,
+      // Create the vacation request
+      let vacation = await storage.createVacationRequest({
+        userId: targetUserId,
         vacationType: vacationType || "annual",
         startDate,
         endDate,
         days,
         reason: reason || null,
       });
+      
+      // Admin-created vacations are auto-approved
+      if (isAdminCreating) {
+        vacation = (await storage.updateVacationRequest(vacation.id, {
+          status: "approved",
+          respondedAt: new Date(),
+          respondedBy: req.session.userId,
+        }))!;
+      }
       
       res.status(201).json(vacation);
     } catch (error) {
@@ -1036,9 +1052,22 @@ export async function registerRoutes(
       if (vacationType !== undefined) updateData.vacationType = vacationType;
       if (startDate !== undefined) updateData.startDate = startDate;
       if (endDate !== undefined) updateData.endDate = endDate;
-      if (days !== undefined) updateData.days = days;
       if (reason !== undefined) updateData.reason = reason;
       if (status !== undefined) updateData.status = status;
+      
+      // Recalculate days if dates are provided but days is not explicitly set
+      if ((startDate !== undefined || endDate !== undefined) && days === undefined) {
+        const existingVacation = await storage.getVacationRequests();
+        const current = existingVacation.find(v => v.id === id);
+        if (current) {
+          const newStart = new Date(startDate || current.startDate);
+          const newEnd = new Date(endDate || current.endDate);
+          const newVacationType = vacationType || current.vacationType;
+          updateData.days = newVacationType === "half_day" ? 0.5 : differenceInDays(newEnd, newStart) + 1;
+        }
+      } else if (days !== undefined) {
+        updateData.days = days;
+      }
       
       const vacation = await storage.updateVacationRequest(id, updateData);
       
