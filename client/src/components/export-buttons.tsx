@@ -36,6 +36,8 @@ export function ExportButtons({
     }
 
     const attendanceMap = new Map<string, Set<number>>();
+    const attendanceTimeMap = new Map<string, Map<number, string>>();
+    
     attendanceLogs.forEach((log) => {
       if (selectedSiteId && log.siteId !== selectedSiteId) return;
       const user = users.find((u) => u.id === log.userId);
@@ -48,14 +50,23 @@ export function ExportButtons({
         logDate.getMonth() === monthStart.getMonth()
       ) {
         const key = log.userId;
+        const day = getDate(logDate);
+        
         if (!attendanceMap.has(key)) {
           attendanceMap.set(key, new Set());
         }
-        attendanceMap.get(key)!.add(getDate(logDate));
+        attendanceMap.get(key)!.add(day);
+        
+        if (!attendanceTimeMap.has(key)) {
+          attendanceTimeMap.set(key, new Map());
+        }
+        const checkInDate = new Date(log.checkInTime);
+        const checkInTime = format(checkInDate, "HH:mm");
+        attendanceTimeMap.get(key)!.set(day, checkInTime);
       }
     });
 
-    return { daysInMonth, days, filteredUsers, attendanceMap };
+    return { daysInMonth, days, filteredUsers, attendanceMap, attendanceTimeMap };
   };
 
   const handleExcelDownload = () => {
@@ -63,15 +74,15 @@ export function ExportButtons({
     const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
 
     companies.forEach((company) => {
-      const { days, filteredUsers, attendanceMap } = generateData(company);
+      const { days, filteredUsers, attendanceTimeMap } = generateData(company);
       const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
 
       const header = ["성명", ...days.map(String)];
       const data = filteredUsers.map((user) => {
-        const userAttendance = attendanceMap.get(user.id) || new Set();
+        const userTimeMap = attendanceTimeMap.get(user.id) || new Map<number, string>();
         return [
           user.name,
-          ...days.map((day) => (userAttendance.has(day) ? "O" : "")),
+          ...days.map((day) => userTimeMap.get(day) || ""),
         ];
       });
 
@@ -148,10 +159,21 @@ export function ExportButtons({
         styles: { 
           fontSize: 7, 
           cellPadding: 1,
-          font: "NotoSansKR"
+          font: "NotoSansKR",
         },
-        headStyles: { fillColor: [41, 128, 185], font: "NotoSansKR" },
-        columnStyles: { 0: { cellWidth: 25 } },
+        headStyles: { 
+          fillColor: [41, 128, 185], 
+          font: "NotoSansKR",
+        },
+        bodyStyles: {
+          font: "NotoSansKR",
+        },
+        columnStyles: { 
+          0: { 
+            cellWidth: 25,
+            font: "NotoSansKR",
+          } 
+        },
       });
     });
 
