@@ -58,6 +58,7 @@ export default function AdminDashboard() {
     }
 
     if (selectedSiteId !== "all") {
+      filteredUsers = filteredUsers.filter(u => u.siteId === selectedSiteId);
       filteredLogs = filteredLogs.filter(log => log.siteId === selectedSiteId);
       filteredSitesForStats = filteredSitesForStats.filter(s => s.id === selectedSiteId);
     }
