@@ -158,6 +158,7 @@ export default function AdminVacationRequests() {
       case "annual": return "연차";
       case "half_day": return "반차";
       case "sick": return "병가";
+      case "family_event": return "경조사";
       case "other": return "기타";
       default: return type || "연차";
     }

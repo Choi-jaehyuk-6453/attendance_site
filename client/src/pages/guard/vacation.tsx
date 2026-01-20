@@ -152,6 +152,7 @@ export default function GuardVacation() {
       case "annual": return "연차";
       case "half_day": return "반차";
       case "sick": return "병가";
+      case "family_event": return "경조사";
       case "other": return "기타";
       default: return type;
     }
@@ -256,6 +257,7 @@ export default function GuardVacation() {
                     <SelectItem value="annual">연차</SelectItem>
                     <SelectItem value="half_day">반차</SelectItem>
                     <SelectItem value="sick">병가</SelectItem>
+                    <SelectItem value="family_event">경조사</SelectItem>
                     <SelectItem value="other">기타</SelectItem>
                   </SelectContent>
                 </Select>
