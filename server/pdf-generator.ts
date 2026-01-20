@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, getDaysInMonth, startOfMonth, getDate } from "date-fns";
 import { ko } from "date-fns/locale";
