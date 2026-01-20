@@ -1,5 +1,4 @@
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import PDFDocument from "pdfkit";
 import { format, getDaysInMonth, startOfMonth, getDate } from "date-fns";
 import { ko } from "date-fns/locale";
 import fs from "fs";
@@ -17,129 +16,140 @@ interface GeneratePdfOptions {
 export async function generateAttendancePdf(options: GeneratePdfOptions): Promise<Buffer> {
   const { users, attendanceLogs, sites, selectedMonth, selectedSiteId } = options;
   
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  
   const selectedSite = sites.find(s => s.id === selectedSiteId);
   const siteName = selectedSite?.name || "전체";
   
-  let fontLoaded = false;
-  
-  try {
-    const fontPath = path.join(process.cwd(), "client/public/fonts/NotoSansKR-Regular.ttf");
-    if (fs.existsSync(fontPath)) {
-      const fontData = fs.readFileSync(fontPath);
-      const base64Font = fontData.toString("base64");
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ 
+        size: "A4", 
+        layout: "landscape",
+        margin: 30
+      });
       
-      doc.addFileToVFS("NotoSansKR-Regular.ttf", base64Font);
-      doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "normal");
-      doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "bold");
-      doc.setFont("NotoSansKR", "normal");
-      fontLoaded = true;
-      console.log("Korean font loaded successfully for PDF generation");
-    }
-  } catch (error) {
-    console.warn("Failed to load Korean font:", error);
-  }
-  
-  const generateData = (company: "mirae_abm" | "dawon_pmc") => {
-    const daysInMonth = getDaysInMonth(selectedMonth);
-    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-    
-    let filteredUsers = users.filter((u) => u.company === company && u.role === "guard");
-    
-    if (selectedSiteId) {
-      filteredUsers = filteredUsers.filter(u => u.siteId === selectedSiteId);
-    }
-
-    const attendanceMap = new Map<string, Set<number>>();
-    
-    attendanceLogs.forEach((log) => {
-      if (selectedSiteId && log.siteId !== selectedSiteId) return;
-      const user = users.find((u) => u.id === log.userId);
-      if (user?.company !== company) return;
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
       
-      const logDate = new Date(log.checkInDate);
-      const monthStart = startOfMonth(selectedMonth);
-      if (
-        logDate.getFullYear() === monthStart.getFullYear() &&
-        logDate.getMonth() === monthStart.getMonth()
-      ) {
-        const key = log.userId;
-        const day = getDate(logDate);
-        
-        if (!attendanceMap.has(key)) {
-          attendanceMap.set(key, new Set());
+      const fontPath = path.join(process.cwd(), "client/public/fonts/NotoSansKR-Regular.ttf");
+      let fontLoaded = false;
+      
+      if (fs.existsSync(fontPath)) {
+        try {
+          doc.registerFont("NotoSansKR", fontPath);
+          doc.font("NotoSansKR");
+          fontLoaded = true;
+          console.log("Korean font loaded successfully for PDF generation");
+        } catch (fontError) {
+          console.warn("Failed to load Korean font:", fontError);
+          doc.font("Helvetica");
         }
-        attendanceMap.get(key)!.add(day);
+      } else {
+        console.warn("Font file not found:", fontPath);
+        doc.font("Helvetica");
       }
-    });
+      
+      const generateData = (company: "mirae_abm" | "dawon_pmc") => {
+        const daysInMonth = getDaysInMonth(selectedMonth);
+        const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+        
+        let filteredUsers = users.filter((u) => u.company === company && u.role === "guard");
+        
+        if (selectedSiteId) {
+          filteredUsers = filteredUsers.filter(u => u.siteId === selectedSiteId);
+        }
 
-    return { daysInMonth, days, filteredUsers, attendanceMap };
-  };
+        const attendanceMap = new Map<string, Set<number>>();
+        
+        attendanceLogs.forEach((log) => {
+          if (selectedSiteId && log.siteId !== selectedSiteId) return;
+          const user = users.find((u) => u.id === log.userId);
+          if (user?.company !== company) return;
+          
+          const logDate = new Date(log.checkInDate);
+          const monthStart = startOfMonth(selectedMonth);
+          if (
+            logDate.getFullYear() === monthStart.getFullYear() &&
+            logDate.getMonth() === monthStart.getMonth()
+          ) {
+            const key = log.userId;
+            const day = getDate(logDate);
+            
+            if (!attendanceMap.has(key)) {
+              attendanceMap.set(key, new Set());
+            }
+            attendanceMap.get(key)!.add(day);
+          }
+        });
 
-  const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
-  let firstPage = true;
+        return { daysInMonth, days, filteredUsers, attendanceMap };
+      };
 
-  for (const company of companies) {
-    const { days, filteredUsers, attendanceMap } = generateData(company);
-    
-    if (filteredUsers.length === 0) continue;
-    
-    if (!firstPage) {
-      doc.addPage();
+      const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
+      let firstPage = true;
+
+      for (const company of companies) {
+        const { days, filteredUsers, attendanceMap } = generateData(company);
+        
+        if (filteredUsers.length === 0) continue;
+        
+        if (!firstPage) {
+          doc.addPage();
+        }
+        firstPage = false;
+
+        const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
+        const monthString = format(selectedMonth, "yyyy년 M월", { locale: ko });
+        
+        doc.fontSize(14).text(
+          `${companyName} 근무자 출근기록부 - ${monthString}`,
+          30,
+          30
+        );
+        doc.fontSize(10).text(
+          `현장: ${siteName}  |  인원: ${filteredUsers.length}명`,
+          30,
+          50
+        );
+
+        const tableTop = 70;
+        const nameColWidth = 60;
+        const dayColWidth = 22;
+        const rowHeight = 18;
+        const pageWidth = doc.page.width - 60;
+        
+        doc.fontSize(7);
+        
+        doc.rect(30, tableTop, nameColWidth, rowHeight).fillAndStroke("#2980b9", "#2980b9");
+        doc.fillColor("white").text("성명", 35, tableTop + 5, { width: nameColWidth - 10 });
+        
+        days.forEach((day, i) => {
+          const x = 30 + nameColWidth + (i * dayColWidth);
+          doc.rect(x, tableTop, dayColWidth, rowHeight).fillAndStroke("#2980b9", "#2980b9");
+          doc.fillColor("white").text(String(day), x + 2, tableTop + 5, { width: dayColWidth - 4, align: "center" });
+        });
+        
+        filteredUsers.forEach((user, rowIndex) => {
+          const y = tableTop + rowHeight + (rowIndex * rowHeight);
+          const userAttendance = attendanceMap.get(user.id) || new Set();
+          
+          doc.rect(30, y, nameColWidth, rowHeight).stroke("#cccccc");
+          doc.fillColor("black").text(user.name, 35, y + 5, { width: nameColWidth - 10 });
+          
+          days.forEach((day, i) => {
+            const x = 30 + nameColWidth + (i * dayColWidth);
+            doc.rect(x, y, dayColWidth, rowHeight).stroke("#cccccc");
+            if (userAttendance.has(day)) {
+              doc.fillColor("black").text("O", x + 2, y + 5, { width: dayColWidth - 4, align: "center" });
+            }
+          });
+        });
+      }
+
+      doc.end();
+    } catch (error) {
+      reject(error);
     }
-    firstPage = false;
-
-    const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
-
-    if (fontLoaded) {
-      doc.setFont("NotoSansKR", "normal");
-    }
-    doc.setFontSize(14);
-    doc.text(
-      `${companyName} 근무자 출근기록부 - ${format(selectedMonth, "yyyy년 M월", { locale: ko })}`,
-      14,
-      15
-    );
-    doc.setFontSize(10);
-    doc.text(`현장: ${siteName}  |  인원: ${filteredUsers.length}명`, 14, 22);
-
-    const tableData = filteredUsers.map((user) => {
-      const userAttendance = attendanceMap.get(user.id) || new Set();
-      return [user.name, ...days.map((day) => (userAttendance.has(day) ? "O" : ""))];
-    });
-
-    const fontName = fontLoaded ? "NotoSansKR" : "helvetica";
-    
-    autoTable(doc, {
-      startY: 28,
-      head: [["성명", ...days.map(String)]],
-      body: tableData,
-      styles: { 
-        fontSize: 7, 
-        cellPadding: 1,
-        font: fontName,
-        fontStyle: "normal",
-      },
-      headStyles: { 
-        fillColor: [41, 128, 185], 
-        font: fontName,
-        fontStyle: "normal",
-      },
-      bodyStyles: {
-        font: fontName,
-        fontStyle: "normal",
-      },
-      columnStyles: { 
-        0: { 
-          cellWidth: 25,
-          font: fontName,
-          fontStyle: "normal",
-        } 
-      },
-    });
-  }
-
-  const pdfArrayBuffer = doc.output("arraybuffer");
-  return Buffer.from(pdfArrayBuffer);
+  });
 }
