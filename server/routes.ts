@@ -904,7 +904,9 @@ export async function registerRoutes(
       
       const vacations = await storage.getVacationRequestsByUser(userId);
       const approvedVacations = vacations.filter(v => v.status === "approved");
-      const usedDays = approvedVacations.reduce((sum, v) => sum + (v.days || 1), 0);
+      const usedDays = approvedVacations
+        .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
+        .reduce((sum, v) => sum + (v.days || 1), 0);
       
       const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
       res.json(balance);
@@ -938,7 +940,9 @@ export async function registerRoutes(
       
       const vacations = await storage.getVacationRequestsByUser(userId);
       const approvedVacations = vacations.filter(v => v.status === "approved");
-      const usedDays = approvedVacations.reduce((sum, v) => sum + (v.days || 1), 0);
+      const usedDays = approvedVacations
+        .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
+        .reduce((sum, v) => sum + (v.days || 1), 0);
       
       const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
       res.json(balance);

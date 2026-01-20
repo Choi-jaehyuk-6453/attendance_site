@@ -161,7 +161,9 @@ export default function AdminVacationStatus() {
     const pending = userVacations.filter(v => v.status === "pending");
     const rejected = userVacations.filter(v => v.status === "rejected");
     
-    const usedDays = approved.reduce((sum, v) => sum + (v.days || 1), 0);
+    const usedDays = approved
+      .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
+      .reduce((sum, v) => sum + (v.days || 1), 0);
     const pendingDays = pending.reduce((sum, v) => sum + (v.days || 1), 0);
     
     let totalAccrued = 0;
