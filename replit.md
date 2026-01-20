@@ -59,16 +59,23 @@ Preferred communication style: Simple, everyday language.
 - Site-based guard management (guards are assigned to specific sites)
 - Vacation request management (planned feature, marked as "준비중")
 
+### Email Configuration
+- **Provider**: Naver Mail SMTP (smtp.naver.com:587)
+- **Required Secrets**: NAVER_EMAIL, NAVER_EMAIL_PASSWORD
+- **Features**: Attendance PDF email sending to registered contacts
+- **Setup**: User must enable POP3/SMTP in Naver Mail settings and generate app password
+
 ### Sidebar Navigation Structure
 - **출근관리**: 출근기록부 (dashboard), QR 관리
 - **휴가관리**: 휴가 신청 현황 (planned)
-- **기초관리**: 현장 관리, 근무자 관리
+- **기초관리**: 현장 관리, 근무자 관리, 담당자 관리
 
 ### Admin Routes
 - `/admin` - 출근기록부 (attendance records, requires site selection)
 - `/admin/qr` - QR 코드 관리
 - `/admin/sites` - 현장 관리
 - `/admin/users` - 근무자 관리
+- `/admin/contacts` - 담당자 관리
 
 ### Path Aliases
 - `@/*` maps to `./client/src/*`

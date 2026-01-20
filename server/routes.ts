@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema } from "@shared/schema";
+import { sendEmail } from "./email";
 import { z } from "zod";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import bcrypt from "bcryptjs";
@@ -707,6 +708,69 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Delete contact error:", error);
       res.status(500).json({ error: "담당자 삭제 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Send email with PDF attachment
+  app.post("/api/send-attendance-email", requireAdmin, async (req, res) => {
+    try {
+      const { contactIds, pdfBase64, fileName, month, siteName } = req.body;
+      
+      if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ error: "수신자를 선택해주세요" });
+      }
+      
+      if (!pdfBase64) {
+        return res.status(400).json({ error: "PDF 파일이 필요합니다" });
+      }
+      
+      const contacts = await storage.getContacts();
+      const selectedContacts = contacts.filter(c => contactIds.includes(c.id));
+      
+      if (selectedContacts.length === 0) {
+        return res.status(400).json({ error: "유효한 수신자가 없습니다" });
+      }
+      
+      const emailAddresses = selectedContacts.map(c => c.email);
+      const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
+      
+      const pdfBuffer = Buffer.from(pdfBase64, "base64");
+      
+      const success = await sendEmail({
+        to: emailAddresses,
+        subject: `[출근기록부] ${siteName} - ${month}`,
+        html: `
+          <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
+            <h2>출근기록부 발송</h2>
+            <p><strong>현장:</strong> ${siteName}</p>
+            <p><strong>기간:</strong> ${month}</p>
+            <p><strong>수신:</strong> ${recipientNames}</p>
+            <br/>
+            <p>첨부된 PDF 파일을 확인해 주세요.</p>
+            <br/>
+            <p style="color: #666; font-size: 12px;">본 메일은 경비원 근태관리 시스템에서 자동 발송되었습니다.</p>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: fileName || "출근기록부.pdf",
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+      
+      if (success) {
+        res.json({ 
+          message: `${selectedContacts.length}명에게 이메일을 발송했습니다`,
+          recipients: recipientNames
+        });
+      } else {
+        res.status(500).json({ error: "이메일 발송에 실패했습니다" });
+      }
+    } catch (error) {
+      console.error("Send email error:", error);
+      res.status(500).json({ error: "이메일 발송 중 오류가 발생했습니다" });
     }
   });
 
