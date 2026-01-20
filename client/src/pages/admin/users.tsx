@@ -56,7 +56,12 @@ const guardSchema = z.object({
   phone: z.string().min(4, "전화번호를 입력해주세요 (최소 4자리)"),
 });
 
+const editGuardSchema = guardSchema.extend({
+  siteId: z.string().optional(),
+});
+
 type GuardForm = z.infer<typeof guardSchema>;
+type EditGuardForm = z.infer<typeof editGuardSchema>;
 
 export default function UsersPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -82,11 +87,12 @@ export default function UsersPage() {
     },
   });
 
-  const editForm = useForm<GuardForm>({
-    resolver: zodResolver(guardSchema),
+  const editForm = useForm<EditGuardForm>({
+    resolver: zodResolver(editGuardSchema),
     defaultValues: {
       name: "",
       phone: "",
+      siteId: "",
     },
   });
 
@@ -130,11 +136,12 @@ export default function UsersPage() {
   });
 
   const updateGuardMutation = useMutation({
-    mutationFn: async (data: GuardForm) => {
+    mutationFn: async (data: EditGuardForm) => {
       if (!selectedUser) throw new Error("사용자가 선택되지 않았습니다");
       const res = await apiRequest("PATCH", `/api/users/${selectedUser.id}`, {
         name: data.name,
         phone: data.phone,
+        siteId: data.siteId || null,
       });
       return res.json();
     },
@@ -207,6 +214,7 @@ export default function UsersPage() {
     editForm.reset({
       name: user.name,
       phone: user.phone || "",
+      siteId: user.siteId || "",
     });
     setEditDialogOpen(true);
   };
@@ -525,6 +533,34 @@ export default function UsersPage() {
                     <FormDescription>
                       전화번호 변경 시 비밀번호도 끝 4자리로 변경됩니다
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="siteId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>배정 현장</FormLabel>
+                    <Select
+                      value={field.value || ""}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-guard-site">
+                          <SelectValue placeholder="현장 선택" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">미배정</SelectItem>
+                        {activeSites.map((site) => (
+                          <SelectItem key={site.id} value={site.id}>
+                            {site.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
