@@ -3,8 +3,10 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema } from "@shared/schema";
 import { sendEmail } from "./email";
+import { generateAttendancePdf } from "./pdf-generator";
 import { z } from "zod";
 import { startOfMonth, endOfMonth, format } from "date-fns";
+import { ko } from "date-fns/locale";
 import bcrypt from "bcryptjs";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -711,17 +713,21 @@ export async function registerRoutes(
     }
   });
 
-  // Send email with PDF attachment
+  // Send email with PDF attachment (generates PDF on server)
   app.post("/api/send-attendance-email", requireAdmin, async (req, res) => {
     try {
-      const { contactIds, pdfBase64, fileName, month, siteName } = req.body;
+      const { contactIds, selectedSiteId, selectedMonth } = req.body;
       
       if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
         return res.status(400).json({ error: "수신자를 선택해주세요" });
       }
       
-      if (!pdfBase64) {
-        return res.status(400).json({ error: "PDF 파일이 필요합니다" });
+      if (!selectedSiteId) {
+        return res.status(400).json({ error: "현장을 선택해주세요" });
+      }
+      
+      if (!selectedMonth) {
+        return res.status(400).json({ error: "월을 선택해주세요" });
       }
       
       const contacts = await storage.getContacts();
@@ -734,16 +740,35 @@ export async function registerRoutes(
       const emailAddresses = selectedContacts.map(c => c.email);
       const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
       
-      const pdfBuffer = Buffer.from(pdfBase64, "base64");
+      // Fetch data for PDF generation
+      const users = await storage.getUsers();
+      const sites = await storage.getSites();
+      const attendanceLogs = await storage.getAttendanceLogs();
+      
+      const selectedSite = sites.find(s => s.id === selectedSiteId);
+      const siteName = selectedSite?.name || "전체";
+      const monthDate = new Date(selectedMonth);
+      const monthString = format(monthDate, "yyyy년 M월", { locale: ko });
+      
+      // Generate PDF on server
+      const pdfBuffer = await generateAttendancePdf({
+        users,
+        attendanceLogs,
+        sites,
+        selectedMonth: monthDate,
+        selectedSiteId,
+      });
+      
+      const fileName = `출근기록부_${siteName}_${format(monthDate, "yyyy년_M월", { locale: ko })}.pdf`;
       
       const success = await sendEmail({
         to: emailAddresses,
-        subject: `[출근기록부] ${siteName} - ${month}`,
+        subject: `[출근기록부] ${siteName} - ${monthString}`,
         html: `
           <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
             <h2>출근기록부 발송</h2>
             <p><strong>현장:</strong> ${siteName}</p>
-            <p><strong>기간:</strong> ${month}</p>
+            <p><strong>기간:</strong> ${monthString}</p>
             <p><strong>수신:</strong> ${recipientNames}</p>
             <br/>
             <p>첨부된 PDF 파일을 확인해 주세요.</p>
@@ -753,7 +778,7 @@ export async function registerRoutes(
         `,
         attachments: [
           {
-            filename: fileName || "출근기록부.pdf",
+            filename: fileName,
             content: pdfBuffer,
             contentType: "application/pdf",
           },

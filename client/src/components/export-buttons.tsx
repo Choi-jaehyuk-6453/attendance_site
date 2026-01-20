@@ -46,13 +46,11 @@ export function ExportButtons({
   });
 
   const sendEmailMutation = useMutation({
-    mutationFn: async (pdfBase64: string) => {
+    mutationFn: async () => {
       const res = await apiRequest("POST", "/api/send-attendance-email", {
         contactIds: selectedContacts,
-        pdfBase64,
-        fileName: `출근기록부_${siteName}_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.pdf`,
-        month: format(selectedMonth, "yyyy년 M월", { locale: ko }),
-        siteName,
+        selectedSiteId,
+        selectedMonth: selectedMonth.toISOString(),
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -304,8 +302,7 @@ export function ExportButtons({
       return;
     }
 
-    const { base64 } = await generatePdfBlob();
-    sendEmailMutation.mutate(base64);
+    sendEmailMutation.mutate();
   };
 
   const toggleContact = (contactId: string) => {
