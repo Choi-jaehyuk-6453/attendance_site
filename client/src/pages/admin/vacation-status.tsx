@@ -249,6 +249,7 @@ export default function AdminVacationStatus() {
               <TableRow>
                 <TableHead>이름</TableHead>
                 <TableHead>현장</TableHead>
+                <TableHead>입사일</TableHead>
                 <TableHead className="text-center">총 연차</TableHead>
                 <TableHead className="text-center">사용</TableHead>
                 <TableHead className="text-center">잔여</TableHead>
@@ -266,6 +267,7 @@ export default function AdminVacationStatus() {
                   <TableRow key={user.id} data-testid={`user-row-${user.id}`}>
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell>{site?.name || "-"}</TableCell>
+                    <TableCell>{user.hireDate ? format(new Date(user.hireDate), "yyyy.MM.dd") : "-"}</TableCell>
                     <TableCell className="text-center">{stats.totalAccrued}</TableCell>
                     <TableCell className="text-center text-orange-500">{stats.usedDays}</TableCell>
                     <TableCell className="text-center text-green-500">{stats.remaining}</TableCell>
