@@ -237,18 +237,22 @@ export function ExportButtons({
           fontSize: 7, 
           cellPadding: 1,
           font: fontName,
+          fontStyle: "normal",
         },
         headStyles: { 
           fillColor: [41, 128, 185], 
           font: fontName,
+          fontStyle: "normal",
         },
         bodyStyles: {
           font: fontName,
+          fontStyle: "normal",
         },
         columnStyles: { 
           0: { 
             cellWidth: 25,
             font: fontName,
+            fontStyle: "normal",
           } 
         },
       });
