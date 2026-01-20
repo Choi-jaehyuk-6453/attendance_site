@@ -31,7 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Building2, MapPin, Trash2 } from "lucide-react";
+import { Plus, Building2, MapPin, Trash2, Pencil } from "lucide-react";
 import type { Site } from "@shared/schema";
 
 const siteSchema = z.object({
@@ -47,12 +47,25 @@ type SiteForm = z.infer<typeof siteSchema>;
 export default function SitesPage() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
 
   const { data: sites = [], isLoading } = useQuery<Site[]>({
     queryKey: ["/api/sites"],
   });
 
   const form = useForm<SiteForm>({
+    resolver: zodResolver(siteSchema),
+    defaultValues: {
+      name: "",
+      address: "",
+      company: "mirae_abm",
+      contractStartDate: "",
+      contractEndDate: "",
+    },
+  });
+
+  const editForm = useForm<SiteForm>({
     resolver: zodResolver(siteSchema),
     defaultValues: {
       name: "",
@@ -91,6 +104,35 @@ export default function SitesPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (data: SiteForm) => {
+      if (!selectedSite) throw new Error("현장이 선택되지 않았습니다");
+      const res = await apiRequest("PATCH", `/api/sites/${selectedSite.id}`, data);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.details || errorData.error || "현장 수정 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sites"] });
+      setEditDialogOpen(false);
+      setSelectedSite(null);
+      toast({
+        title: "수정 완료",
+        description: "현장 정보가 수정되었습니다.",
+      });
+    },
+    onError: (error: Error) => {
+      console.error("Site update error:", error);
+      toast({
+        variant: "destructive",
+        title: "수정 실패",
+        description: error.message || "현장 수정 중 오류가 발생했습니다.",
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/sites/${id}`);
@@ -106,6 +148,18 @@ export default function SitesPage() {
 
   const onSubmit = (data: SiteForm) => {
     createMutation.mutate(data);
+  };
+
+  const handleEdit = (site: Site) => {
+    setSelectedSite(site);
+    editForm.reset({
+      name: site.name,
+      address: site.address || "",
+      company: site.company,
+      contractStartDate: site.contractStartDate || "",
+      contractEndDate: site.contractEndDate || "",
+    });
+    setEditDialogOpen(true);
   };
 
   const miraeSites = sites.filter((s) => s.company === "mirae_abm");
@@ -251,15 +305,140 @@ export default function SitesPage() {
           <SiteList
             title="미래에이비엠"
             sites={miraeSites}
+            onEdit={handleEdit}
             onDelete={(id) => deleteMutation.mutate(id)}
           />
           <SiteList
             title="다원피엠씨"
             sites={dawonSites}
+            onEdit={handleEdit}
             onDelete={(id) => deleteMutation.mutate(id)}
           />
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>현장 수정</DialogTitle>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>현장명</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="현장명을 입력하세요"
+                        data-testid="input-edit-site-name"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>주소</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="주소를 입력하세요 (선택)"
+                        data-testid="input-edit-site-address"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="company"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>소속 법인</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-company">
+                          <SelectValue placeholder="법인 선택" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="mirae_abm">미래에이비엠</SelectItem>
+                        <SelectItem value="dawon_pmc">다원피엠씨</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editForm.control}
+                  name="contractStartDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>계약 시작일</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          data-testid="input-edit-contract-start"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="contractEndDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>계약 종료일</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          data-testid="input-edit-contract-end"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditDialogOpen(false)}
+                >
+                  취소
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                  data-testid="button-submit-edit-site"
+                >
+                  {updateMutation.isPending ? "수정 중..." : "수정"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -267,10 +446,12 @@ export default function SitesPage() {
 function SiteList({
   title,
   sites,
+  onEdit,
   onDelete,
 }: {
   title: string;
   sites: Site[];
+  onEdit: (site: Site) => void;
   onDelete: (id: string) => void;
 }) {
   return (
@@ -305,14 +486,24 @@ function SiteList({
                   </p>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onDelete(site.id)}
-                data-testid={`button-delete-site-${site.id}`}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onEdit(site)}
+                  data-testid={`button-edit-site-${site.id}`}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onDelete(site.id)}
+                  data-testid={`button-delete-site-${site.id}`}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
             </div>
           ))
         )}

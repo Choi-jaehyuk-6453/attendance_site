@@ -236,6 +236,29 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/sites/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, address, company, contractStartDate, contractEndDate } = req.body;
+      
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (address !== undefined) updateData.address = address;
+      if (company !== undefined) updateData.company = company;
+      if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate;
+      if (contractEndDate !== undefined) updateData.contractEndDate = contractEndDate;
+      
+      const site = await storage.updateSite(id, updateData);
+      if (!site) {
+        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
+      }
+      res.json(site);
+    } catch (error) {
+      console.error("Update site error:", error);
+      res.status(500).json({ error: "현장 수정 중 오류가 발생했습니다" });
+    }
+  });
+
   app.delete("/api/sites/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
