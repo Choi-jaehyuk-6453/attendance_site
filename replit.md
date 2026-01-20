@@ -57,7 +57,27 @@ Preferred communication style: Simple, everyday language.
 - Export filenames include site name when a site is selected
 - Geolocation capture during check-in
 - Site-based guard management (guards are assigned to specific sites)
-- Vacation request management (planned feature, marked as "준비중")
+- Complete vacation management system
+
+### Vacation Management System
+- **Annual Leave Calculation**: Based on Korean labor law
+  - Under 1 year service: 1 day per month (expires after 1 year)
+  - 1+ years service: 15 days per year (valid for 2 years)
+  - 3+ years service: 15 days + 1 day per 2 years of service (max 25 days)
+- **Vacation Types**: 연차 (annual), 반차 (half-day), 병가 (sick), 기타 (other)
+- **Guard Features** (`/guard/vacation`):
+  - View leave balance with detailed accrual breakdown
+  - Submit vacation requests with date range and reason
+  - View request history and status
+- **Admin Features**:
+  - `/admin/vacation-requests`: Approve/reject vacation requests, send email with PDF
+  - `/admin/vacation-status`: View vacation status by site/person, directly add/edit/delete vacation records
+  - Admin-created vacations are auto-approved
+  - PDF export of vacation requests and status reports
+  - Email integration for sending vacation documents to contacts
+- **Key Files**: 
+  - `shared/leave-utils.ts` - Annual leave calculation logic
+  - `server/vacation-pdf-generator.ts` - PDF generation for vacation documents
 
 ### Email Configuration
 - **Provider**: Naver Mail SMTP (smtp.naver.com:587)
@@ -67,15 +87,21 @@ Preferred communication style: Simple, everyday language.
 
 ### Sidebar Navigation Structure
 - **출근관리**: 출근기록부 (dashboard), QR 관리
-- **휴가관리**: 휴가 신청 현황 (planned)
+- **휴가관리**: 휴가 신청 현황, 휴가 현황
 - **기초관리**: 현장 관리, 근무자 관리, 담당자 관리
 
 ### Admin Routes
 - `/admin` - 출근기록부 (attendance records, requires site selection)
 - `/admin/qr` - QR 코드 관리
+- `/admin/vacation-requests` - 휴가 신청 현황 (approve/reject vacation requests)
+- `/admin/vacation-status` - 휴가 현황 (view/edit vacation status by site/person)
 - `/admin/sites` - 현장 관리
 - `/admin/users` - 근무자 관리
 - `/admin/contacts` - 담당자 관리
+
+### Guard Routes
+- `/guard` - Guard home (QR scan check-in)
+- `/guard/vacation` - 휴가 신청 및 현황 (view balance, submit requests)
 
 ### Path Aliases
 - `@/*` maps to `./client/src/*`
