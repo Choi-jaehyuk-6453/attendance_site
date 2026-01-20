@@ -107,29 +107,49 @@ export function ExportButtons({
   const handlePdfPrint = async () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     
-    const fontUrl = "https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLTq8H4hfeE.ttf";
+    let fontLoaded = false;
     
-    try {
-      const response = await fetch(fontUrl);
-      const arrayBuffer = await response.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-      
-      doc.addFileToVFS("NotoSansKR-Regular.ttf", base64);
-      doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "normal");
-      doc.setFont("NotoSansKR");
-    } catch (error) {
-      console.error("Failed to load Korean font:", error);
+    const fontUrls = [
+      "/fonts/NotoSansKR-Regular.ttf",
+      "https://cdn.jsdelivr.net/npm/@aspect-build/aspect-rules-jest@0.19.6/scripts/fonts/NotoSansKR-Regular.ttf",
+      "https://fastly.jsdelivr.net/gh/nicenorm/noto-sans-korean@main/fonts/NotoSansKR-Regular.ttf",
+    ];
+    
+    for (const fontUrl of fontUrls) {
+      if (fontLoaded) break;
+      try {
+        const response = await fetch(fontUrl);
+        if (!response.ok) continue;
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binaryString = '';
+        for (let i = 0; i < uint8Array.length; i++) {
+          binaryString += String.fromCharCode(uint8Array[i]);
+        }
+        const base64 = btoa(binaryString);
+        
+        doc.addFileToVFS("NotoSansKR-Regular.ttf", base64);
+        doc.addFont("NotoSansKR-Regular.ttf", "NotoSansKR", "normal");
+        doc.setFont("NotoSansKR");
+        fontLoaded = true;
+        console.log("Korean font loaded successfully from:", fontUrl);
+      } catch (error) {
+        console.warn("Failed to load font from:", fontUrl, error);
+      }
+    }
+    
+    if (!fontLoaded) {
+      console.error("Could not load Korean font from any source");
     }
     
     const companies: Array<"mirae_abm" | "dawon_pmc"> = ["mirae_abm", "dawon_pmc"];
     let firstPage = true;
 
-    companies.forEach((company) => {
+    for (const company of companies) {
       const { days, filteredUsers, attendanceMap } = generateData(company);
       
-      if (filteredUsers.length === 0) return;
+      if (filteredUsers.length === 0) continue;
       
       if (!firstPage) {
         doc.addPage();
@@ -138,6 +158,9 @@ export function ExportButtons({
 
       const companyName = company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
 
+      if (fontLoaded) {
+        doc.setFont("NotoSansKR");
+      }
       doc.setFontSize(14);
       doc.text(
         `${companyName} 근무자 출근기록부 - ${format(selectedMonth, "yyyy년 M월", { locale: ko })}`,
@@ -152,6 +175,8 @@ export function ExportButtons({
         return [user.name, ...days.map((day) => (userAttendance.has(day) ? "O" : ""))];
       });
 
+      const fontName = fontLoaded ? "NotoSansKR" : "helvetica";
+      
       autoTable(doc, {
         startY: 28,
         head: [["성명", ...days.map(String)]],
@@ -159,23 +184,23 @@ export function ExportButtons({
         styles: { 
           fontSize: 7, 
           cellPadding: 1,
-          font: "NotoSansKR",
+          font: fontName,
         },
         headStyles: { 
           fillColor: [41, 128, 185], 
-          font: "NotoSansKR",
+          font: fontName,
         },
         bodyStyles: {
-          font: "NotoSansKR",
+          font: fontName,
         },
         columnStyles: { 
           0: { 
             cellWidth: 25,
-            font: "NotoSansKR",
+            font: fontName,
           } 
         },
       });
-    });
+    }
 
     const fileName = selectedSiteId 
       ? `출근기록부_${siteName}_${format(selectedMonth, "yyyy년_M월", { locale: ko })}.pdf`

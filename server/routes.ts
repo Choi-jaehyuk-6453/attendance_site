@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema } from "@shared/schema";
+import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema } from "@shared/schema";
 import { z } from "zod";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import bcrypt from "bcryptjs";
@@ -649,6 +649,64 @@ export async function registerRoutes(
         error: "데이터베이스 설정 중 오류가 발생했습니다",
         details: error instanceof Error ? error.message : String(error)
       });
+    }
+  });
+
+  // Contacts API
+  app.get("/api/contacts", requireAdmin, async (req, res) => {
+    try {
+      const contacts = await storage.getContacts();
+      res.json(contacts);
+    } catch (error) {
+      console.error("Get contacts error:", error);
+      res.status(500).json({ error: "담당자 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  app.post("/api/contacts", requireAdmin, async (req, res) => {
+    try {
+      const validatedData = insertContactSchema.parse(req.body);
+      const contact = await storage.createContact(validatedData);
+      res.status(201).json(contact);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Create contact error:", error);
+      res.status(500).json({ error: "담당자 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.patch("/api/contacts/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { department, name, email, company } = req.body;
+      
+      const updateData: any = {};
+      if (department !== undefined) updateData.department = department;
+      if (name !== undefined) updateData.name = name;
+      if (email !== undefined) updateData.email = email;
+      if (company !== undefined) updateData.company = company;
+      
+      const contact = await storage.updateContact(id, updateData);
+      if (!contact) {
+        return res.status(404).json({ error: "담당자를 찾을 수 없습니다" });
+      }
+      res.json(contact);
+    } catch (error) {
+      console.error("Update contact error:", error);
+      res.status(500).json({ error: "담당자 수정 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.delete("/api/contacts/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteContact(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete contact error:", error);
+      res.status(500).json({ error: "담당자 삭제 중 오류가 발생했습니다" });
     }
   });
 

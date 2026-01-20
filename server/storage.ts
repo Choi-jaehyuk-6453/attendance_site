@@ -3,6 +3,7 @@ import {
   sites,
   attendanceLogs,
   vacationRequests,
+  contacts,
   type User,
   type InsertUser,
   type Site,
@@ -11,6 +12,8 @@ import {
   type InsertAttendanceLog,
   type VacationRequest,
   type InsertVacationRequest,
+  type Contact,
+  type InsertContact,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
@@ -40,6 +43,12 @@ export interface IStorage {
   getVacationRequestsByUser(userId: string): Promise<VacationRequest[]>;
   createVacationRequest(request: InsertVacationRequest): Promise<VacationRequest>;
   updateVacationRequest(id: string, data: Partial<VacationRequest>): Promise<VacationRequest | undefined>;
+  
+  getContacts(): Promise<Contact[]>;
+  getContact(id: string): Promise<Contact | undefined>;
+  createContact(contact: InsertContact): Promise<Contact>;
+  updateContact(id: string, data: Partial<InsertContact>): Promise<Contact | undefined>;
+  deleteContact(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -183,6 +192,29 @@ export class DatabaseStorage implements IStorage {
       .where(eq(vacationRequests.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  async getContacts(): Promise<Contact[]> {
+    return db.select().from(contacts).where(eq(contacts.isActive, true));
+  }
+
+  async getContact(id: string): Promise<Contact | undefined> {
+    const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+    return contact || undefined;
+  }
+
+  async createContact(contact: InsertContact): Promise<Contact> {
+    const [created] = await db.insert(contacts).values(contact).returning();
+    return created;
+  }
+
+  async updateContact(id: string, data: Partial<InsertContact>): Promise<Contact | undefined> {
+    const [updated] = await db.update(contacts).set(data).where(eq(contacts.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    await db.update(contacts).set({ isActive: false }).where(eq(contacts.id, id));
   }
 }
 

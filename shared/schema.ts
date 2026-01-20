@@ -85,6 +85,24 @@ export const vacationRequestsRelations = relations(vacationRequests, ({ one }) =
   }),
 }));
 
+export const contacts = pgTable("contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  department: text("department").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  company: companyEnum("company").notNull().default("mirae_abm"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertContactSchema = createInsertSchema(contacts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Contact = typeof contacts.$inferSelect;
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
 });

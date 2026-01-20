@@ -19,6 +19,7 @@ import {
   Building2,
   CalendarDays,
   LogOut,
+  UserCog,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
@@ -55,6 +56,11 @@ const managementMenuItems = [
     title: "근무자 관리",
     url: "/admin/users",
     icon: Users,
+  },
+  {
+    title: "담당자 관리",
+    url: "/admin/contacts",
+    icon: UserCog,
   },
 ];
 

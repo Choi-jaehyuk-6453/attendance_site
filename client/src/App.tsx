@@ -13,6 +13,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import SitesPage from "@/pages/admin/sites";
 import QRManagementPage from "@/pages/admin/qr-management";
 import UsersPage from "@/pages/admin/users";
+import ContactsPage from "@/pages/admin/contacts";
 import GuardHome from "@/pages/guard/home";
 
 function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -118,6 +119,9 @@ function Router() {
       </Route>
       <Route path="/admin/users">
         <ProtectedAdminRoute component={UsersPage} />
+      </Route>
+      <Route path="/admin/contacts">
+        <ProtectedAdminRoute component={ContactsPage} />
       </Route>
       <Route path="/guard">
         <ProtectedGuardRoute component={GuardHome} />
