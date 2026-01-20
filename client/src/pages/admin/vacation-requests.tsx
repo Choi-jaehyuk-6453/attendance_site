@@ -250,6 +250,10 @@ export default function AdminVacationRequests() {
                     </p>
                   )}
                   
+                  <p className="text-sm text-muted-foreground">
+                    대근: {vacation.substituteWork || "X"}
+                  </p>
+                  
                   {vacation.status === "rejected" && vacation.rejectionReason && (
                     <p className="text-sm text-destructive">
                       반려 사유: {vacation.rejectionReason}

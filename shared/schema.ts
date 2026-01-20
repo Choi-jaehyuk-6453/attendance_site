@@ -71,6 +71,7 @@ export const vacationRequests = pgTable("vacation_requests", {
   endDate: date("end_date").notNull(),
   days: integer("days").notNull().default(1),
   reason: text("reason"),
+  substituteWork: text("substitute_work").notNull().default("X"),
   status: vacationStatusEnum("status").notNull().default("pending"),
   requestedAt: timestamp("requested_at").notNull().defaultNow(),
   respondedAt: timestamp("responded_at"),

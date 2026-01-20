@@ -57,6 +57,7 @@ export default function GuardVacation() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+  const [substituteWork, setSubstituteWork] = useState("X");
 
   const { data: vacations = [], isLoading: vacationsLoading } = useQuery<VacationRequest[]>({
     queryKey: ["/api/vacations/my"],
@@ -72,6 +73,7 @@ export default function GuardVacation() {
       startDate: string;
       endDate: string;
       reason: string;
+      substituteWork: string;
     }) => {
       const res = await apiRequest("POST", "/api/vacations", data);
       return res.json();
@@ -84,6 +86,7 @@ export default function GuardVacation() {
       setStartDate("");
       setEndDate("");
       setReason("");
+      setSubstituteWork("X");
       toast({
         title: "휴가 신청 완료",
         description: "휴가 신청이 접수되었습니다. 관리자 승인을 기다려주세요.",
@@ -122,6 +125,7 @@ export default function GuardVacation() {
       startDate,
       endDate,
       reason,
+      substituteWork,
     });
   };
 
@@ -283,6 +287,18 @@ export default function GuardVacation() {
                   data-testid="input-reason"
                 />
               </div>
+              <div className="space-y-2">
+                <Label>대근 여부</Label>
+                <Select value={substituteWork} onValueChange={setSubstituteWork}>
+                  <SelectTrigger data-testid="select-substitute-work">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="X">X (대근 없음)</SelectItem>
+                    <SelectItem value="O">O (대근 있음)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Button
                 className="w-full"
                 onClick={handleSubmit}
@@ -333,6 +349,7 @@ export default function GuardVacation() {
                           <span className="ml-1">({vacation.days}일)</span>
                         </p>
                         {vacation.reason && <p>사유: {vacation.reason}</p>}
+                        <p>대근: {vacation.substituteWork || "X"}</p>
                         {vacation.status === "rejected" && vacation.rejectionReason && (
                           <p className="text-destructive">반려 사유: {vacation.rejectionReason}</p>
                         )}

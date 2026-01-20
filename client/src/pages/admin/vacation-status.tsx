@@ -55,6 +55,7 @@ export default function AdminVacationStatus() {
   const [addStartDate, setAddStartDate] = useState("");
   const [addEndDate, setAddEndDate] = useState("");
   const [addReason, setAddReason] = useState("");
+  const [addSubstituteWork, setAddSubstituteWork] = useState("X");
 
   const { data: vacations = [] } = useQuery<VacationRequest[]>({
     queryKey: ["/api/vacations"],
@@ -102,7 +103,7 @@ export default function AdminVacationStatus() {
   });
 
   const addMutation = useMutation({
-    mutationFn: async (data: { userId: string; startDate: string; endDate: string; reason: string }) => {
+    mutationFn: async (data: { userId: string; startDate: string; endDate: string; reason: string; substituteWork: string }) => {
       const res = await apiRequest("POST", "/api/vacations", {
         ...data,
         vacationType: "annual",
@@ -116,6 +117,7 @@ export default function AdminVacationStatus() {
       setAddStartDate("");
       setAddEndDate("");
       setAddReason("");
+      setAddSubstituteWork("X");
       toast({ title: "추가 완료", description: "휴가가 추가되었습니다." });
     },
     onError: (error: Error) => {
@@ -338,6 +340,21 @@ export default function AdminVacationStatus() {
                   onChange={(e) => setEditingVacation({ ...editingVacation, days: Number(e.target.value) })}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>대근 여부</Label>
+                <Select 
+                  value={editingVacation.substituteWork || "X"} 
+                  onValueChange={(v) => setEditingVacation({ ...editingVacation, substituteWork: v })}
+                >
+                  <SelectTrigger data-testid="select-edit-substitute-work">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="X">X (대근 없음)</SelectItem>
+                    <SelectItem value="O">O (대근 있음)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
           <DialogFooter className="gap-2">
@@ -356,6 +373,7 @@ export default function AdminVacationStatus() {
                   startDate: editingVacation.startDate,
                   endDate: editingVacation.endDate,
                   days: editingVacation.days,
+                  substituteWork: editingVacation.substituteWork,
                 }
               })}
               disabled={updateMutation.isPending}
@@ -399,6 +417,18 @@ export default function AdminVacationStatus() {
               <Label>사유</Label>
               <Input value={addReason} onChange={(e) => setAddReason(e.target.value)} placeholder="사유 입력" />
             </div>
+            <div className="space-y-2">
+              <Label>대근 여부</Label>
+              <Select value={addSubstituteWork} onValueChange={setAddSubstituteWork}>
+                <SelectTrigger data-testid="select-add-substitute-work">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="X">X (대근 없음)</SelectItem>
+                  <SelectItem value="O">O (대근 있음)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>취소</Button>
@@ -408,6 +438,7 @@ export default function AdminVacationStatus() {
                 startDate: addStartDate,
                 endDate: addEndDate,
                 reason: addReason,
+                substituteWork: addSubstituteWork,
               })}
               disabled={addMutation.isPending || !addUserId || !addStartDate || !addEndDate}
             >
