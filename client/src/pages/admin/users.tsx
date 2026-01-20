@@ -141,7 +141,7 @@ export default function UsersPage() {
       const res = await apiRequest("PATCH", `/api/users/${selectedUser.id}`, {
         name: data.name,
         phone: data.phone,
-        siteId: data.siteId || null,
+        siteId: data.siteId === "none" ? null : data.siteId,
       });
       return res.json();
     },
@@ -214,7 +214,7 @@ export default function UsersPage() {
     editForm.reset({
       name: user.name,
       phone: user.phone || "",
-      siteId: user.siteId || "",
+      siteId: user.siteId || "none",
     });
     setEditDialogOpen(true);
   };
@@ -553,7 +553,7 @@ export default function UsersPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">미배정</SelectItem>
+                        <SelectItem value="none">미배정</SelectItem>
                         {activeSites.map((site) => (
                           <SelectItem key={site.id} value={site.id}>
                             {site.name}
