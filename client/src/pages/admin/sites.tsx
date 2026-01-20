@@ -31,7 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Building2, MapPin, Trash2, Pencil } from "lucide-react";
+import { Plus, Building2, MapPin, Trash2, Pencil, Calendar } from "lucide-react";
 import type { Site } from "@shared/schema";
 
 const siteSchema = z.object({
@@ -477,12 +477,18 @@ function SiteList({
               className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
               data-testid={`card-site-${site.id}`}
             >
-              <div>
+              <div className="space-y-1">
                 <p className="font-medium">{site.name}</p>
                 {site.address && (
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
                     {site.address}
+                  </p>
+                )}
+                {(site.contractStartDate || site.contractEndDate) && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    계약: {site.contractStartDate || "?"} ~ {site.contractEndDate || "?"}
                   </p>
                 )}
               </div>

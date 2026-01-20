@@ -426,13 +426,14 @@ export default function UsersPage() {
                   <th className="p-3 text-left font-medium">상태</th>
                   <th className="p-3 text-left font-medium">이름</th>
                   <th className="p-3 text-left font-medium">연락처</th>
+                  <th className="p-3 text-left font-medium">입사일</th>
                   <th className="p-3 text-center font-medium">관리</th>
                 </tr>
               </thead>
               <tbody>
                 {siteGuards.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
                       등록된 근무자가 없습니다
                     </td>
                   </tr>
@@ -453,6 +454,7 @@ export default function UsersPage() {
                       </td>
                       <td className="p-3 font-medium">{user.name}</td>
                       <td className="p-3 text-muted-foreground">{user.phone || "-"}</td>
+                      <td className="p-3 text-muted-foreground">{user.hireDate || "-"}</td>
                       <td className="p-3">
                         <div className="flex items-center justify-center gap-1">
                           <Tooltip>
