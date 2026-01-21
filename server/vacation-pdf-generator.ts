@@ -63,59 +63,51 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
       doc.text("휴가 사용신청서", margin, 60, { align: "center", width: contentWidth });
       doc.font("Korean");
       
-      const tableStartY = 120;
+      const tableStartY = 110;
+      const tableWidth = 420;
+      const tableX = (pageWidth - tableWidth) / 2;
       const labelWidth = 70;
-      const tableWidth = contentWidth;
       const valueWidth = tableWidth - labelWidth;
       const smallRowHeight = 32;
       const largeRowHeight = 70;
       
-      const approvalBoxWidth = 80;
-      const approvalBoxHeight = 50;
-      const approvalBoxX = margin + tableWidth - approvalBoxWidth;
-      const approvalBoxY = tableStartY;
-      
-      doc.rect(approvalBoxX, approvalBoxY, approvalBoxWidth, approvalBoxHeight / 2).stroke();
-      doc.rect(approvalBoxX, approvalBoxY + approvalBoxHeight / 2, approvalBoxWidth, approvalBoxHeight / 2).stroke();
-      
-      doc.fontSize(10).text("승인", approvalBoxX, approvalBoxY + 6, { width: approvalBoxWidth, align: "center" });
-      doc.fontSize(9).text("여부", approvalBoxX, approvalBoxY + 18, { width: approvalBoxWidth, align: "center" });
-      
       const statusText = vacation.status === "approved" ? "승인" : 
                         vacation.status === "rejected" ? "보류" : "대기";
-      doc.fontSize(10).text(`(${statusText})`, approvalBoxX, approvalBoxY + approvalBoxHeight / 2 + 10, { width: approvalBoxWidth, align: "center" });
+      doc.fontSize(11).text(`승인여부 : ${statusText}`, tableX + tableWidth - 100, tableStartY, { width: 100, align: "right" });
       
-      let currentY = tableStartY + approvalBoxHeight + 10;
+      let currentY = tableStartY + 25;
       
-      doc.rect(margin, currentY, labelWidth, smallRowHeight).stroke();
-      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth, smallRowHeight).stroke();
-      doc.fontSize(11).text("소  속", margin + 10, currentY + 10);
-      doc.fontSize(11).text(site?.name || "(미배정)", margin + labelWidth + 10, currentY + 10);
+      doc.rect(tableX, currentY, labelWidth, smallRowHeight).stroke();
+      doc.rect(tableX + labelWidth, currentY, valueWidth, smallRowHeight).stroke();
+      doc.fontSize(11).text("소  속", tableX + 10, currentY + 10);
+      doc.fontSize(11).text(site?.name || "(미배정)", tableX + labelWidth + 10, currentY + 10);
       currentY += smallRowHeight;
       
-      const halfLabelWidth = labelWidth / 2;
-      const halfValueWidth = (valueWidth - labelWidth) / 2;
+      const col1Width = labelWidth;
+      const col2Width = (valueWidth) / 3;
+      const col3Width = labelWidth;
+      const col4Width = valueWidth - col2Width - col3Width;
       
-      doc.rect(margin, currentY, halfLabelWidth, smallRowHeight).stroke();
-      doc.rect(margin + halfLabelWidth, currentY, halfLabelWidth + 30, smallRowHeight).stroke();
-      doc.rect(margin + labelWidth + 30, currentY, halfLabelWidth, smallRowHeight).stroke();
-      doc.rect(margin + labelWidth + halfLabelWidth + 30, currentY, valueWidth - labelWidth - halfLabelWidth - 30, smallRowHeight).stroke();
+      doc.rect(tableX, currentY, col1Width, smallRowHeight).stroke();
+      doc.rect(tableX + col1Width, currentY, col2Width, smallRowHeight).stroke();
+      doc.rect(tableX + col1Width + col2Width, currentY, col3Width, smallRowHeight).stroke();
+      doc.rect(tableX + col1Width + col2Width + col3Width, currentY, col4Width, smallRowHeight).stroke();
       
-      doc.fontSize(11).text("직  책", margin + 5, currentY + 10);
-      doc.fontSize(11).text("경비원", margin + halfLabelWidth + 10, currentY + 10);
-      doc.fontSize(11).text("성  명", margin + labelWidth + 35, currentY + 10);
-      doc.fontSize(11).text(user.name, margin + labelWidth + halfLabelWidth + 40, currentY + 10);
+      doc.fontSize(11).text("직  책", tableX + 10, currentY + 10);
+      doc.fontSize(11).text("경비원", tableX + col1Width + 10, currentY + 10);
+      doc.fontSize(11).text("성  명", tableX + col1Width + col2Width + 10, currentY + 10);
+      doc.fontSize(11).text(user.name, tableX + col1Width + col2Width + col3Width + 10, currentY + 10);
       currentY += smallRowHeight;
       
       const startDate = new Date(vacation.startDate);
       const endDate = new Date(vacation.endDate);
       const periodRowHeight = 50;
       
-      doc.rect(margin, currentY, labelWidth, periodRowHeight).stroke();
-      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth - 80, periodRowHeight).stroke();
-      doc.rect(margin + valueWidth - 80, currentY, 80, periodRowHeight).stroke();
+      doc.rect(tableX, currentY, labelWidth, periodRowHeight).stroke();
+      doc.rect(tableX + labelWidth, currentY, valueWidth - 80, periodRowHeight).stroke();
+      doc.rect(tableX + labelWidth + valueWidth - 80, currentY, 80, periodRowHeight).stroke();
       
-      doc.fontSize(11).text("기  간", margin + 10, currentY + 18);
+      doc.fontSize(11).text("기  간", tableX + 10, currentY + 18);
       
       const startYear = format(startDate, "yyyy");
       const startMonth = format(startDate, "M");
@@ -124,26 +116,26 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
       const endMonth = format(endDate, "M");
       const endDay = format(endDate, "d");
       
-      doc.fontSize(10).text(`${startYear}년  ${startMonth}월  ${startDay}일부터`, margin + labelWidth + 15, currentY + 10);
-      doc.fontSize(10).text(`${endYear}년  ${endMonth}월  ${endDay}일 까지`, margin + labelWidth + 15, currentY + 30);
+      doc.fontSize(10).text(`${startYear}년  ${startMonth}월  ${startDay}일부터`, tableX + labelWidth + 15, currentY + 10);
+      doc.fontSize(10).text(`${endYear}년  ${endMonth}월  ${endDay}일 까지`, tableX + labelWidth + 15, currentY + 30);
       
       const days = vacation.days || 1;
       const dayDisplay = vacation.vacationType === "half_day" ? "0.5" : String(days);
-      doc.fontSize(10).text(`(   ${dayDisplay}   )일`, margin + valueWidth - 70, currentY + 18);
+      doc.fontSize(10).text(`(   ${dayDisplay}   )일`, tableX + labelWidth + valueWidth - 75, currentY + 18);
       currentY += periodRowHeight;
       
-      doc.rect(margin, currentY, labelWidth, smallRowHeight).stroke();
-      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth, smallRowHeight).stroke();
-      doc.fontSize(11).text("휴가유형", margin + 8, currentY + 10);
-      doc.fontSize(11).text(getVacationTypeName(vacation.vacationType || "annual"), margin + labelWidth + 10, currentY + 10);
+      doc.rect(tableX, currentY, labelWidth, smallRowHeight).stroke();
+      doc.rect(tableX + labelWidth, currentY, valueWidth, smallRowHeight).stroke();
+      doc.fontSize(11).text("휴가유형", tableX + 8, currentY + 10);
+      doc.fontSize(11).text(getVacationTypeName(vacation.vacationType || "annual"), tableX + labelWidth + 10, currentY + 10);
       currentY += smallRowHeight;
       
       const reasonRowHeight = largeRowHeight;
-      doc.rect(margin, currentY, labelWidth, reasonRowHeight).stroke();
-      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth, reasonRowHeight).stroke();
-      doc.fontSize(11).text("사  유", margin + 15, currentY + 28);
-      doc.fontSize(10).text(vacation.reason || "", margin + labelWidth + 10, currentY + 10, { 
-        width: valueWidth - labelWidth - 20,
+      doc.rect(tableX, currentY, labelWidth, reasonRowHeight).stroke();
+      doc.rect(tableX + labelWidth, currentY, valueWidth, reasonRowHeight).stroke();
+      doc.fontSize(11).text("사  유", tableX + 15, currentY + 28);
+      doc.fontSize(10).text(vacation.reason || "", tableX + labelWidth + 10, currentY + 10, { 
+        width: valueWidth - 20,
         height: reasonRowHeight - 20
       });
       
@@ -152,7 +144,7 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
           doc.save();
           doc.opacity(0.15);
           const logoWidth = 180;
-          const logoX = margin + labelWidth + (valueWidth - labelWidth - logoWidth) / 2;
+          const logoX = tableX + labelWidth + (valueWidth - logoWidth) / 2;
           const logoY = currentY + (reasonRowHeight - 60) / 2;
           doc.image(logoPath, logoX, logoY, { width: logoWidth });
           doc.restore();
@@ -163,16 +155,16 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
       currentY += reasonRowHeight;
       
       const contactRowHeight = 50;
-      doc.rect(margin, currentY, labelWidth, contactRowHeight).stroke();
-      doc.rect(margin + labelWidth, currentY, 70, contactRowHeight / 2).stroke();
-      doc.rect(margin + labelWidth + 70, currentY, valueWidth - labelWidth - 70, contactRowHeight / 2).stroke();
-      doc.rect(margin + labelWidth, currentY + contactRowHeight / 2, 70, contactRowHeight / 2).stroke();
-      doc.rect(margin + labelWidth + 70, currentY + contactRowHeight / 2, valueWidth - labelWidth - 70, contactRowHeight / 2).stroke();
+      doc.rect(tableX, currentY, labelWidth, contactRowHeight).stroke();
+      doc.rect(tableX + labelWidth, currentY, 70, contactRowHeight / 2).stroke();
+      doc.rect(tableX + labelWidth + 70, currentY, valueWidth - 70, contactRowHeight / 2).stroke();
+      doc.rect(tableX + labelWidth, currentY + contactRowHeight / 2, 70, contactRowHeight / 2).stroke();
+      doc.rect(tableX + labelWidth + 70, currentY + contactRowHeight / 2, valueWidth - 70, contactRowHeight / 2).stroke();
       
-      doc.fontSize(11).text("연락처", margin + 12, currentY + 18);
-      doc.fontSize(9).text("휴대전화", margin + labelWidth + 8, currentY + 6);
-      doc.fontSize(10).text(user.phone || "", margin + labelWidth + 75, currentY + 6);
-      doc.fontSize(9).text("기타 연락처", margin + labelWidth + 5, currentY + contactRowHeight / 2 + 6);
+      doc.fontSize(11).text("연락처", tableX + 12, currentY + 18);
+      doc.fontSize(9).text("휴대전화", tableX + labelWidth + 8, currentY + 6);
+      doc.fontSize(10).text(user.phone || "", tableX + labelWidth + 75, currentY + 6);
+      doc.fontSize(9).text("기타 연락처", tableX + labelWidth + 5, currentY + contactRowHeight / 2 + 6);
       currentY += contactRowHeight;
       
       currentY += 40;
@@ -193,7 +185,7 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
       currentY += 50;
       const requestDate = new Date(vacation.requestedAt);
       doc.fontSize(11).text(
-        `(${format(requestDate, "yyyy")}년  ${format(requestDate, "M")}월  ${format(requestDate, "d")}일)(신청날짜)`,
+        `${format(requestDate, "yyyy")}년  ${format(requestDate, "M")}월  ${format(requestDate, "d")}일`,
         margin,
         currentY,
         { align: "center", width: contentWidth }
