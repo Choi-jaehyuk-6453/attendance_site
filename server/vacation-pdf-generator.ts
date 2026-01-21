@@ -46,6 +46,7 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
       }
       
       const pageWidth = doc.page.width;
+      const pageHeight = doc.page.height;
       const margin = 50;
       const contentWidth = pageWidth - margin * 2;
       
@@ -55,166 +56,162 @@ export async function generateVacationPdf(options: GenerateVacationPdfOptions): 
         : "미래ABM_LOGO_1768955495420.png";
       const logoPath = path.join(process.cwd(), "attached_assets", logoFileName);
       
+      doc.fontSize(24);
+      if (fs.existsSync(boldFontPath)) {
+        doc.font("KoreanBold");
+      }
+      doc.text("휴가 사용신청서", margin, 60, { align: "center", width: contentWidth });
+      doc.font("Korean");
+      
+      const tableStartY = 120;
+      const labelWidth = 70;
+      const tableWidth = contentWidth;
+      const valueWidth = tableWidth - labelWidth;
+      const smallRowHeight = 32;
+      const largeRowHeight = 70;
+      
+      const approvalBoxWidth = 80;
+      const approvalBoxHeight = 50;
+      const approvalBoxX = margin + tableWidth - approvalBoxWidth;
+      const approvalBoxY = tableStartY;
+      
+      doc.rect(approvalBoxX, approvalBoxY, approvalBoxWidth, approvalBoxHeight / 2).stroke();
+      doc.rect(approvalBoxX, approvalBoxY + approvalBoxHeight / 2, approvalBoxWidth, approvalBoxHeight / 2).stroke();
+      
+      doc.fontSize(10).text("승인", approvalBoxX, approvalBoxY + 6, { width: approvalBoxWidth, align: "center" });
+      doc.fontSize(9).text("여부", approvalBoxX, approvalBoxY + 18, { width: approvalBoxWidth, align: "center" });
+      
+      const statusText = vacation.status === "approved" ? "승인" : 
+                        vacation.status === "rejected" ? "보류" : "대기";
+      doc.fontSize(10).text(`(${statusText})`, approvalBoxX, approvalBoxY + approvalBoxHeight / 2 + 10, { width: approvalBoxWidth, align: "center" });
+      
+      let currentY = tableStartY + approvalBoxHeight + 10;
+      
+      doc.rect(margin, currentY, labelWidth, smallRowHeight).stroke();
+      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth, smallRowHeight).stroke();
+      doc.fontSize(11).text("소  속", margin + 10, currentY + 10);
+      doc.fontSize(11).text(site?.name || "(미배정)", margin + labelWidth + 10, currentY + 10);
+      currentY += smallRowHeight;
+      
+      const halfLabelWidth = labelWidth / 2;
+      const halfValueWidth = (valueWidth - labelWidth) / 2;
+      
+      doc.rect(margin, currentY, halfLabelWidth, smallRowHeight).stroke();
+      doc.rect(margin + halfLabelWidth, currentY, halfLabelWidth + 30, smallRowHeight).stroke();
+      doc.rect(margin + labelWidth + 30, currentY, halfLabelWidth, smallRowHeight).stroke();
+      doc.rect(margin + labelWidth + halfLabelWidth + 30, currentY, valueWidth - labelWidth - halfLabelWidth - 30, smallRowHeight).stroke();
+      
+      doc.fontSize(11).text("직  책", margin + 5, currentY + 10);
+      doc.fontSize(11).text("경비원", margin + halfLabelWidth + 10, currentY + 10);
+      doc.fontSize(11).text("성  명", margin + labelWidth + 35, currentY + 10);
+      doc.fontSize(11).text(user.name, margin + labelWidth + halfLabelWidth + 40, currentY + 10);
+      currentY += smallRowHeight;
+      
+      const startDate = new Date(vacation.startDate);
+      const endDate = new Date(vacation.endDate);
+      const periodRowHeight = 50;
+      
+      doc.rect(margin, currentY, labelWidth, periodRowHeight).stroke();
+      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth - 80, periodRowHeight).stroke();
+      doc.rect(margin + valueWidth - 80, currentY, 80, periodRowHeight).stroke();
+      
+      doc.fontSize(11).text("기  간", margin + 10, currentY + 18);
+      
+      const startYear = format(startDate, "yyyy");
+      const startMonth = format(startDate, "M");
+      const startDay = format(startDate, "d");
+      const endYear = format(endDate, "yyyy");
+      const endMonth = format(endDate, "M");
+      const endDay = format(endDate, "d");
+      
+      doc.fontSize(10).text(`${startYear}년  ${startMonth}월  ${startDay}일부터`, margin + labelWidth + 15, currentY + 10);
+      doc.fontSize(10).text(`${endYear}년  ${endMonth}월  ${endDay}일 까지`, margin + labelWidth + 15, currentY + 30);
+      
+      const days = vacation.days || 1;
+      const dayDisplay = vacation.vacationType === "half_day" ? "0.5" : String(days);
+      doc.fontSize(10).text(`(   ${dayDisplay}   )일`, margin + valueWidth - 70, currentY + 18);
+      currentY += periodRowHeight;
+      
+      doc.rect(margin, currentY, labelWidth, smallRowHeight).stroke();
+      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth, smallRowHeight).stroke();
+      doc.fontSize(11).text("휴가유형", margin + 8, currentY + 10);
+      doc.fontSize(11).text(getVacationTypeName(vacation.vacationType || "annual"), margin + labelWidth + 10, currentY + 10);
+      currentY += smallRowHeight;
+      
+      const reasonRowHeight = largeRowHeight;
+      doc.rect(margin, currentY, labelWidth, reasonRowHeight).stroke();
+      doc.rect(margin + labelWidth, currentY, valueWidth - labelWidth, reasonRowHeight).stroke();
+      doc.fontSize(11).text("사  유", margin + 15, currentY + 28);
+      doc.fontSize(10).text(vacation.reason || "", margin + labelWidth + 10, currentY + 10, { 
+        width: valueWidth - labelWidth - 20,
+        height: reasonRowHeight - 20
+      });
+      
       if (fs.existsSync(logoPath)) {
         try {
-          const logoWidth = 120;
-          const logoX = (pageWidth - logoWidth) / 2;
-          doc.image(logoPath, logoX, 40, { width: logoWidth });
-          doc.moveDown(4);
+          doc.save();
+          doc.opacity(0.15);
+          const logoWidth = 180;
+          const logoX = margin + labelWidth + (valueWidth - labelWidth - logoWidth) / 2;
+          const logoY = currentY + (reasonRowHeight - 60) / 2;
+          doc.image(logoPath, logoX, logoY, { width: logoWidth });
+          doc.restore();
         } catch (logoError) {
           console.warn("Failed to load logo:", logoError);
         }
       }
+      currentY += reasonRowHeight;
       
-      doc.y = 100;
-      doc.fontSize(22);
-      if (fs.existsSync(boldFontPath)) {
-        doc.font("KoreanBold");
-      }
-      doc.text("휴가 사용신청서", { align: "center" });
-      doc.font("Korean");
-      doc.moveDown(1.5);
+      const contactRowHeight = 50;
+      doc.rect(margin, currentY, labelWidth, contactRowHeight).stroke();
+      doc.rect(margin + labelWidth, currentY, 70, contactRowHeight / 2).stroke();
+      doc.rect(margin + labelWidth + 70, currentY, valueWidth - labelWidth - 70, contactRowHeight / 2).stroke();
+      doc.rect(margin + labelWidth, currentY + contactRowHeight / 2, 70, contactRowHeight / 2).stroke();
+      doc.rect(margin + labelWidth + 70, currentY + contactRowHeight / 2, valueWidth - labelWidth - 70, contactRowHeight / 2).stroke();
       
-      const startY = doc.y;
-      const labelWidth = 100;
-      const valueWidth = contentWidth - labelWidth - 120;
-      const rowHeight = 35;
-      const tableX = margin;
+      doc.fontSize(11).text("연락처", margin + 12, currentY + 18);
+      doc.fontSize(9).text("휴대전화", margin + labelWidth + 8, currentY + 6);
+      doc.fontSize(10).text(user.phone || "", margin + labelWidth + 75, currentY + 6);
+      doc.fontSize(9).text("기타 연락처", margin + labelWidth + 5, currentY + contactRowHeight / 2 + 6);
+      currentY += contactRowHeight;
       
-      const approvalBoxX = pageWidth - margin - 100;
-      const approvalBoxY = startY;
-      doc.rect(approvalBoxX, approvalBoxY, 100, 50).stroke();
-      doc.fontSize(10).text("승인", approvalBoxX, approvalBoxY + 8, { width: 100, align: "center" });
-      doc.fontSize(9).text("여부", approvalBoxX, approvalBoxY + 22, { width: 100, align: "center" });
-      
-      const statusText = vacation.status === "approved" ? "승인" : 
-                        vacation.status === "rejected" ? "보류" : "대기";
-      doc.fontSize(11).text(`( ${statusText} )`, approvalBoxX, approvalBoxY + 36, { width: 100, align: "center" });
-      
-      let currentY = startY + 10;
-      
-      const drawTableRow = (label: string, value: string, height: number = rowHeight) => {
-        doc.rect(tableX, currentY, labelWidth, height).stroke();
-        doc.rect(tableX + labelWidth, currentY, valueWidth, height).stroke();
-        
-        doc.fontSize(11).text(label, tableX + 10, currentY + (height / 2) - 6, { 
-          width: labelWidth - 20 
-        });
-        doc.fontSize(11).text(value, tableX + labelWidth + 10, currentY + (height / 2) - 6, { 
-          width: valueWidth - 20 
-        });
-        
-        currentY += height;
-      };
-      
-      drawTableRow("소 속", site?.name || "(미배정)");
-      
-      doc.rect(tableX, currentY, labelWidth / 2, rowHeight).stroke();
-      doc.rect(tableX + labelWidth / 2, currentY, labelWidth / 2, rowHeight).stroke();
-      doc.rect(tableX + labelWidth, currentY, (valueWidth - labelWidth) / 2, rowHeight).stroke();
-      doc.rect(tableX + labelWidth + (valueWidth - labelWidth) / 2, currentY, labelWidth / 2, rowHeight).stroke();
-      doc.rect(tableX + labelWidth + (valueWidth - labelWidth) / 2 + labelWidth / 2, currentY, valueWidth - (valueWidth - labelWidth) / 2 - labelWidth / 2, rowHeight).stroke();
-      
-      doc.fontSize(11).text("직 책", tableX + 5, currentY + 12, { width: labelWidth / 2 - 10 });
-      doc.fontSize(11).text("경비", tableX + labelWidth / 2 + 5, currentY + 12, { width: labelWidth / 2 - 10 });
-      doc.fontSize(11).text("성 명", tableX + labelWidth + (valueWidth - labelWidth) / 2 + 5, currentY + 12, { width: labelWidth / 2 - 10 });
-      doc.fontSize(11).text(user.name, tableX + labelWidth + (valueWidth - labelWidth) / 2 + labelWidth / 2 + 5, currentY + 12);
-      currentY += rowHeight;
-      
-      const startDate = new Date(vacation.startDate);
-      const endDate = new Date(vacation.endDate);
-      const periodHeight = rowHeight * 2;
-      
-      doc.rect(tableX, currentY, labelWidth, periodHeight).stroke();
-      doc.rect(tableX + labelWidth, currentY, valueWidth - 80, periodHeight).stroke();
-      doc.rect(tableX + labelWidth + valueWidth - 80, currentY, 80, periodHeight).stroke();
-      
-      doc.fontSize(11).text("기 간", tableX + 10, currentY + periodHeight / 2 - 6, { width: labelWidth - 20 });
-      
-      doc.fontSize(10).text(
-        `(20${format(startDate, "yy")}년  ${format(startDate, "M")}월  ${format(startDate, "d")}일부터)`,
-        tableX + labelWidth + 10,
-        currentY + 12
-      );
-      doc.fontSize(10).text(
-        `(20${format(endDate, "yy")}년  ${format(endDate, "M")}월  ${format(endDate, "d")}일까지)`,
-        tableX + labelWidth + 10,
-        currentY + periodHeight / 2 + 8
-      );
-      
-      const days = vacation.days || 1;
-      const timeDisplay = vacation.vacationType === "half_day" ? "4" : String(days * 8);
-      doc.fontSize(10).text(`(  ${timeDisplay}  ) 시간`, tableX + labelWidth + valueWidth - 75, currentY + periodHeight / 2 - 6);
-      
-      currentY += periodHeight;
-      
-      drawTableRow("휴가유형", getVacationTypeName(vacation.vacationType || "annual"));
-      
-      const reasonHeight = rowHeight * 3;
-      doc.rect(tableX, currentY, labelWidth, reasonHeight).stroke();
-      doc.rect(tableX + labelWidth, currentY, valueWidth, reasonHeight).stroke();
-      
-      doc.fontSize(11).text("사 유", tableX + 10, currentY + 12, { width: labelWidth - 20 });
-      doc.fontSize(10).text(vacation.reason || "", tableX + labelWidth + 10, currentY + 12, { 
-        width: valueWidth - 20,
-        height: reasonHeight - 24
-      });
-      currentY += reasonHeight;
-      
-      const contactHeight = rowHeight * 1.5;
-      doc.rect(tableX, currentY, labelWidth, contactHeight).stroke();
-      doc.rect(tableX + labelWidth, currentY, 80, contactHeight / 2).stroke();
-      doc.rect(tableX + labelWidth + 80, currentY, valueWidth - 80, contactHeight / 2).stroke();
-      doc.rect(tableX + labelWidth, currentY + contactHeight / 2, 80, contactHeight / 2).stroke();
-      doc.rect(tableX + labelWidth + 80, currentY + contactHeight / 2, valueWidth - 80, contactHeight / 2).stroke();
-      
-      doc.fontSize(10).text("연락처", tableX + 10, currentY + contactHeight / 2 - 6, { width: labelWidth - 20 });
-      doc.fontSize(9).text("휴대전화", tableX + labelWidth + 5, currentY + 5, { width: 70 });
-      doc.fontSize(10).text(user.phone || "", tableX + labelWidth + 85, currentY + 5);
-      doc.fontSize(9).text("기타 연락처", tableX + labelWidth + 5, currentY + contactHeight / 2 + 5, { width: 70 });
-      
-      currentY += contactHeight;
-      
-      doc.moveDown(2);
-      currentY = doc.y + 20;
-      
+      currentY += 40;
       doc.fontSize(11).text(
-        "본인 은 위 와 같 은 사유로 연 차휴 가를 사용하고자 하오니",
+        "본인은 위와 같은 사유로 연차휴가를 사용하고자 하오니",
         margin,
         currentY,
         { align: "center", width: contentWidth }
       );
-      doc.moveDown(0.5);
+      currentY += 20;
       doc.fontSize(11).text(
-        "재 가하여 주 시기 바랍니다.",
+        "재가하여 주시기 바랍니다.",
         margin,
-        doc.y,
+        currentY,
         { align: "center", width: contentWidth }
       );
       
-      doc.moveDown(3);
-      
+      currentY += 50;
       const requestDate = new Date(vacation.requestedAt);
       doc.fontSize(11).text(
-        `(20${format(requestDate, "yy")}년  ${format(requestDate, "M")}월  ${format(requestDate, "d")}일)`,
+        `(${format(requestDate, "yyyy")}년  ${format(requestDate, "M")}월  ${format(requestDate, "d")}일)(신청날짜)`,
         margin,
-        doc.y,
+        currentY,
         { align: "center", width: contentWidth }
       );
       
-      doc.moveDown(2);
+      currentY += 35;
       doc.fontSize(11).text(
-        `신청 인 :   ${user.name}`,
+        `신청인 :  ${user.name}`,
         margin,
-        doc.y,
+        currentY,
         { align: "center", width: contentWidth }
       );
       
-      doc.moveDown(4);
-      doc.fontSize(12).text(
-        `株式 會社 ${companyName} 귀중`,
+      currentY += 50;
+      doc.fontSize(13).text(
+        `株式會社 ${companyName} 귀중`,
         margin,
-        doc.y,
+        currentY,
         { align: "center", width: contentWidth }
       );
       
