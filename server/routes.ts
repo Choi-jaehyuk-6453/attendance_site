@@ -141,6 +141,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors[0].message });
       }
       console.error("Create user error:", error);
+      
+      // Check for unique constraint violation (duplicate username)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("unique") || errorMessage.includes("duplicate") || errorMessage.includes("23505")) {
+        return res.status(400).json({ error: "이미 동일한 이름의 근무자가 등록되어 있습니다. 다른 이름을 사용해주세요." });
+      }
+      
       res.status(500).json({ error: "사용자 생성 중 오류가 발생했습니다" });
     }
   });
