@@ -235,11 +235,13 @@ export default function UsersPage() {
   const activeSites = sites.filter(s => s.isActive);
 
   const selectedSite = activeSites.find(s => s.id === selectedSiteId);
-  const siteGuards = selectedSiteId === "unassigned"
-    ? guards.filter(g => !g.siteId)
-    : selectedSiteId 
-      ? guards.filter(g => g.siteId === selectedSiteId)
-      : [];
+  const siteGuards = selectedSiteId === "all"
+    ? guards
+    : selectedSiteId === "unassigned"
+      ? guards.filter(g => !g.siteId)
+      : selectedSiteId 
+        ? guards.filter(g => g.siteId === selectedSiteId)
+        : [];
   const activeGuardsCount = siteGuards.filter(g => g.isActive).length;
   const unassignedGuards = guards.filter(g => !g.siteId);
 
@@ -257,11 +259,13 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold">근무자 관리</h1>
           <p className="text-muted-foreground">
-            {selectedSiteId === "unassigned"
-              ? `미배정 - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
-              : selectedSite 
-                ? `${selectedSite.name} - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
-                : "현장을 선택해주세요"
+            {selectedSiteId === "all"
+              ? `전체 현장 - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
+              : selectedSiteId === "unassigned"
+                ? `미배정 - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
+                : selectedSite 
+                  ? `${selectedSite.name} - 활성 ${activeGuardsCount}명 / 전체 ${siteGuards.length}명`
+                  : "현장을 선택해주세요"
             }
           </p>
         </div>
@@ -274,6 +278,9 @@ export default function UsersPage() {
               <SelectValue placeholder="현장 선택" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">
+                전체 ({guards.length}명)
+              </SelectItem>
               {activeSites.map((site) => (
                 <SelectItem key={site.id} value={site.id}>
                   {site.name}
@@ -286,7 +293,7 @@ export default function UsersPage() {
               )}
             </SelectContent>
           </Select>
-          {selectedSiteId && selectedSiteId !== "unassigned" && (
+          {selectedSiteId && selectedSiteId !== "unassigned" && selectedSiteId !== "all" && (
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-guard">
@@ -414,7 +421,13 @@ export default function UsersPage() {
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="p-4 border-b bg-muted/30 flex items-center justify-between gap-4">
-            <h3 className="font-semibold">{selectedSiteId === "unassigned" ? "미배정" : selectedSite?.name || ""}</h3>
+            <h3 className="font-semibold">
+              {selectedSiteId === "all" 
+                ? "전체 현장" 
+                : selectedSiteId === "unassigned" 
+                  ? "미배정" 
+                  : selectedSite?.name || ""}
+            </h3>
             <span className="text-sm text-muted-foreground">
               활성 {activeGuardsCount}명 / 전체 {siteGuards.length}명
             </span>
@@ -425,6 +438,9 @@ export default function UsersPage() {
                 <tr>
                   <th className="p-3 text-left font-medium">상태</th>
                   <th className="p-3 text-left font-medium">이름</th>
+                  {selectedSiteId === "all" && (
+                    <th className="p-3 text-left font-medium">현장</th>
+                  )}
                   <th className="p-3 text-left font-medium">연락처</th>
                   <th className="p-3 text-left font-medium">입사일</th>
                   <th className="p-3 text-center font-medium">관리</th>
@@ -433,7 +449,7 @@ export default function UsersPage() {
               <tbody>
                 {siteGuards.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={selectedSiteId === "all" ? 6 : 5} className="p-8 text-center text-muted-foreground">
                       등록된 근무자가 없습니다
                     </td>
                   </tr>
@@ -453,6 +469,11 @@ export default function UsersPage() {
                         </Badge>
                       </td>
                       <td className="p-3 font-medium">{user.name}</td>
+                      {selectedSiteId === "all" && (
+                        <td className="p-3 text-muted-foreground">
+                          {sites.find(s => s.id === user.siteId)?.name || "미배정"}
+                        </td>
+                      )}
                       <td className="p-3 text-muted-foreground">{user.phone || "-"}</td>
                       <td className="p-3 text-muted-foreground">{user.hireDate || "-"}</td>
                       <td className="p-3">
