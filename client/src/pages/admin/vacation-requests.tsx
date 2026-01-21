@@ -31,6 +31,7 @@ import {
   Clock,
   User,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import type { VacationRequest, User as UserType, Site, Contact } from "@shared/schema";
 
@@ -42,6 +43,7 @@ export default function AdminVacationRequests() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const { data: vacations = [], isLoading } = useQuery<VacationRequest[]>({
     queryKey: ["/api/vacations"],
@@ -126,6 +128,33 @@ export default function AdminVacationRequests() {
       });
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/vacations/${id}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vacations"] });
+      setDeleteDialogOpen(false);
+      setSelectedVacation(null);
+      toast({
+        title: "삭제 완료",
+        description: "휴가 신청이 삭제되었습니다.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "삭제 실패",
+        description: error.message,
+      });
+    },
+  });
+
+  const handleDelete = (vacation: VacationRequest) => {
+    setSelectedVacation(vacation);
+    setDeleteDialogOpen(true);
+  };
 
   const handleReject = (vacation: VacationRequest) => {
     setSelectedVacation(vacation);
@@ -310,6 +339,15 @@ export default function AdminVacationRequests() {
                         </Button>
                       </>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDelete(vacation)}
+                      data-testid={`button-delete-${vacation.id}`}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -395,6 +433,39 @@ export default function AdminVacationRequests() {
               data-testid="button-send-email"
             >
               {selectedContacts.length}명에게 발송
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>휴가 신청 삭제</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              이 휴가 신청을 정말 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.
+            </p>
+            {selectedVacation && (
+              <div className="mt-4 p-3 rounded-md bg-muted text-sm">
+                <p><strong>신청자:</strong> {users.find(u => u.id === selectedVacation.userId)?.name || "알 수 없음"}</p>
+                <p><strong>기간:</strong> {format(new Date(selectedVacation.startDate), "yyyy.M.d")} ~ {format(new Date(selectedVacation.endDate), "yyyy.M.d")}</p>
+                <p><strong>상태:</strong> {selectedVacation.status === "pending" ? "대기중" : selectedVacation.status === "approved" ? "승인" : "반려"}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => selectedVacation && deleteMutation.mutate(selectedVacation.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              삭제
             </Button>
           </DialogFooter>
         </DialogContent>
