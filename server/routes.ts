@@ -389,6 +389,66 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/attendance", requireAdmin, async (req, res) => {
+    try {
+      const { userId, siteId, checkInDate } = req.body;
+      
+      if (!userId || !siteId || !checkInDate) {
+        return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      
+      const site = await storage.getSite(siteId);
+      if (!site) {
+        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
+      }
+      
+      const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
+      if (existingLog) {
+        return res.status(400).json({ error: "해당 날짜에 이미 출근 기록이 있습니다" });
+      }
+      
+      const log = await storage.createAttendanceLog({
+        userId,
+        siteId,
+        checkInDate,
+        latitude: null,
+        longitude: null,
+      });
+      
+      res.status(201).json(log);
+    } catch (error) {
+      console.error("Admin create attendance error:", error);
+      res.status(500).json({ error: "출근 기록 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.delete("/api/admin/attendance", requireAdmin, async (req, res) => {
+    try {
+      const { userId, checkInDate } = req.body;
+      
+      if (!userId || !checkInDate) {
+        return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
+      }
+      
+      const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
+      if (!existingLog) {
+        return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
+      }
+      
+      await storage.deleteAttendanceLogByUserAndDate(userId, checkInDate);
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Admin delete attendance error:", error);
+      res.status(500).json({ error: "출근 기록 삭제 중 오류가 발생했습니다" });
+    }
+  });
+
   app.post("/api/seed", async (req, res) => {
     try {
       const existingUsers = await storage.getUsers();

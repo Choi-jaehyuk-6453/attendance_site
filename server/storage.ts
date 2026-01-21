@@ -37,7 +37,10 @@ export interface IStorage {
   getAttendanceLogs(startDate?: string, endDate?: string): Promise<AttendanceLog[]>;
   getAttendanceLogsByUser(userId: string, startDate?: string, endDate?: string): Promise<AttendanceLog[]>;
   getTodayAttendanceLog(userId: string, date: string): Promise<AttendanceLog | undefined>;
+  getAttendanceLogByUserAndDate(userId: string, date: string): Promise<AttendanceLog | undefined>;
   createAttendanceLog(log: InsertAttendanceLog): Promise<AttendanceLog>;
+  deleteAttendanceLog(id: string): Promise<void>;
+  deleteAttendanceLogByUserAndDate(userId: string, date: string): Promise<void>;
   
   getVacationRequests(): Promise<VacationRequest[]>;
   getVacationRequestsByUser(userId: string): Promise<VacationRequest[]>;
@@ -168,6 +171,26 @@ export class DatabaseStorage implements IStorage {
   async createAttendanceLog(log: InsertAttendanceLog): Promise<AttendanceLog> {
     const [created] = await db.insert(attendanceLogs).values(log).returning();
     return created;
+  }
+
+  async getAttendanceLogByUserAndDate(userId: string, date: string): Promise<AttendanceLog | undefined> {
+    const [log] = await db
+      .select()
+      .from(attendanceLogs)
+      .where(
+        and(eq(attendanceLogs.userId, userId), eq(attendanceLogs.checkInDate, date))
+      );
+    return log || undefined;
+  }
+
+  async deleteAttendanceLog(id: string): Promise<void> {
+    await db.delete(attendanceLogs).where(eq(attendanceLogs.id, id));
+  }
+
+  async deleteAttendanceLogByUserAndDate(userId: string, date: string): Promise<void> {
+    await db.delete(attendanceLogs).where(
+      and(eq(attendanceLogs.userId, userId), eq(attendanceLogs.checkInDate, date))
+    );
   }
 
   async getVacationRequests(): Promise<VacationRequest[]> {

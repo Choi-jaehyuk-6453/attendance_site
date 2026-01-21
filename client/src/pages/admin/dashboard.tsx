@@ -177,6 +177,7 @@ export default function AdminDashboard() {
                 selectedMonth={selectedMonth}
                 selectedSiteId={selectedSiteId}
                 company="mirae_abm"
+                isAdmin={true}
               />
             )}
             {(selectedCompany === "all" || selectedCompany === "dawon_pmc") && (
@@ -187,6 +188,7 @@ export default function AdminDashboard() {
                 selectedMonth={selectedMonth}
                 selectedSiteId={selectedSiteId}
                 company="dawon_pmc"
+                isAdmin={true}
               />
             )}
           </>
