@@ -118,6 +118,27 @@ export default function GuardHome() {
     try {
       const qrData = JSON.parse(data);
       if (qrData.type === "attendance" && qrData.siteId) {
+        // Check if user has an assigned site
+        if (!user?.siteId) {
+          toast({
+            variant: "destructive",
+            title: "현장 미배정",
+            description: "배정된 현장이 없습니다. 관리자에게 문의하세요.",
+          });
+          return;
+        }
+        
+        // Check if QR code site matches user's assigned site
+        if (qrData.siteId !== user.siteId) {
+          const scannedSite = sites.find((s) => s.id === qrData.siteId);
+          toast({
+            variant: "destructive",
+            title: "다른 현장의 QR 코드",
+            description: `이 QR 코드는 "${scannedSite?.name || "다른 현장"}"의 코드입니다. 본인 현장의 QR 코드를 스캔해주세요.`,
+          });
+          return;
+        }
+        
         checkInMutation.mutate({
           siteId: qrData.siteId,
           latitude: location?.lat,
@@ -137,7 +158,7 @@ export default function GuardHome() {
         description: "QR 코드를 다시 스캔해주세요.",
       });
     }
-  }, [location, toast, checkInMutation]);
+  }, [location, toast, checkInMutation, user, sites]);
 
   const handleLogout = async () => {
     await logout();
@@ -154,6 +175,8 @@ export default function GuardHome() {
 
   const companyName = user.company === "mirae_abm" ? "미래에이비엠" : "다원피엠씨";
   const logoPath = user.company === "mirae_abm" ? miraeLogoPath : dawonLogoPath;
+  const userSite = sites.find((s) => s.id === user.siteId);
+  const displayLocation = userSite ? `${companyName} ${userSite.name}` : companyName;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -180,7 +203,7 @@ export default function GuardHome() {
             <User className="h-5 w-5 text-primary" />
             <h1 className="text-2xl font-bold">{user.name}님</h1>
           </div>
-          <p className="text-muted-foreground">{companyName}</p>
+          <p className="text-muted-foreground">{displayLocation}</p>
           <p className="text-sm text-muted-foreground">
             {format(new Date(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
           </p>

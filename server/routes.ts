@@ -376,6 +376,20 @@ export async function registerRoutes(
         return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
       }
       
+      // Server-side validation: Check if guard's assigned site matches QR site
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+      }
+      
+      if (!user.siteId) {
+        return res.status(400).json({ error: "배정된 현장이 없습니다. 관리자에게 문의하세요." });
+      }
+      
+      if (user.siteId !== siteId) {
+        return res.status(400).json({ error: `본인 현장(${site.name})이 아닌 다른 현장의 QR 코드입니다.` });
+      }
+      
       const existingLog = await storage.getTodayAttendanceLog(userId, checkInDate);
       if (existingLog) {
         return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
@@ -1022,7 +1036,7 @@ export async function registerRoutes(
   // Create vacation request (guard or admin)
   app.post("/api/vacations", requireAuth, async (req, res) => {
     try {
-      const { vacationType, startDate, endDate, reason, userId: requestUserId } = req.body;
+      const { vacationType, startDate, endDate, reason, substituteWork, userId: requestUserId } = req.body;
       
       // Admin can create vacation for any user, guard can only create for themselves
       let targetUserId = req.session.userId!;
@@ -1047,6 +1061,7 @@ export async function registerRoutes(
         endDate,
         days,
         reason: reason || null,
+        substituteWork: substituteWork || "X",
       });
       
       // Admin-created vacations are auto-approved
