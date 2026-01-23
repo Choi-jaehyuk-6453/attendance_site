@@ -109,8 +109,9 @@ export function AttendanceGrid({
     };
   }, [companySites, filteredUsers, selectedSiteId]);
 
+  // Map of userId -> Map of day -> attendance info (type and whether it exists)
   const attendanceMap = useMemo(() => {
-    const map = new Map<string, Set<number>>();
+    const map = new Map<string, Map<number, { type: string }>>();
     attendanceLogs.forEach((log) => {
       if (selectedSiteId && log.siteId !== selectedSiteId) return;
       const user = users.find((u) => u.id === log.userId);
@@ -124,13 +125,26 @@ export function AttendanceGrid({
       ) {
         const key = log.userId;
         if (!map.has(key)) {
-          map.set(key, new Set());
+          map.set(key, new Map());
         }
-        map.get(key)!.add(getDate(logDate));
+        const attendanceType = (log as AttendanceLog & { attendanceType?: string }).attendanceType || "normal";
+        map.get(key)!.set(getDate(logDate), { type: attendanceType });
       }
     });
     return map;
   }, [attendanceLogs, selectedMonth, selectedSiteId, company, users]);
+
+  // Helper to get display text for attendance type
+  const getAttendanceDisplay = (type: string) => {
+    switch (type) {
+      case "annual": return { text: "연", color: "text-blue-600" };
+      case "half_day": return { text: "반", color: "text-cyan-600" };
+      case "sick": return { text: "병", color: "text-orange-600" };
+      case "family_event": return { text: "경", color: "text-purple-600" };
+      case "other": return { text: "기", color: "text-gray-600" };
+      default: return { text: "O", color: "text-primary" };
+    }
+  };
 
   const addAttendanceMutation = useMutation({
     mutationFn: async (data: { userId: string; siteId: string; checkInDate: string }) => {
@@ -226,8 +240,10 @@ export function AttendanceGrid({
     ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
     : "전체 현장";
 
-  const renderAttendanceCell = (user: User, day: number, userAttendance: Set<number>, siteId: string) => {
-    const hasAttendance = userAttendance.has(day);
+  const renderAttendanceCell = (user: User, day: number, userAttendance: Map<number, { type: string }>, siteId: string) => {
+    const attendance = userAttendance.get(day);
+    const hasAttendance = !!attendance;
+    const display = attendance ? getAttendanceDisplay(attendance.type) : null;
     
     if (isAdmin) {
       return (
@@ -237,8 +253,8 @@ export function AttendanceGrid({
           onClick={() => handleCellClick(user, day, hasAttendance, siteId)}
           data-testid={`cell-attendance-${user.id}-${day}`}
         >
-          {hasAttendance ? (
-            <span className="font-bold text-primary">O</span>
+          {hasAttendance && display ? (
+            <span className={`font-bold ${display.color}`}>{display.text}</span>
           ) : (
             <span className="text-muted-foreground/30">-</span>
           )}
@@ -251,8 +267,8 @@ export function AttendanceGrid({
         key={day}
         className="w-9 min-w-[36px] p-1 text-center"
       >
-        {hasAttendance ? (
-          <span className="font-bold text-primary">O</span>
+        {hasAttendance && display ? (
+          <span className={`font-bold ${display.color}`}>{display.text}</span>
         ) : (
           <span className="text-muted-foreground/30">-</span>
         )}
@@ -287,6 +303,15 @@ export function AttendanceGrid({
                 </span>
               )}
             </div>
+          </div>
+          <div className="flex items-center gap-3 mt-2 text-xs flex-wrap">
+            <span className="text-muted-foreground">범례:</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-primary">O</span> 출근</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-blue-600">연</span> 연차</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-cyan-600">반</span> 반차</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-orange-600">병</span> 병가</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-purple-600">경</span> 경조사</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-gray-600">기</span> 기타</span>
           </div>
         </div>
 
@@ -334,7 +359,7 @@ export function AttendanceGrid({
                           </td>
                         </tr>
                         {siteUsers.map((user) => {
-                          const userAttendance = attendanceMap.get(user.id) || new Set();
+                          const userAttendance = attendanceMap.get(user.id) || new Map();
                           return (
                             <tr key={user.id} className="hover-elevate border-b">
                               <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
@@ -360,7 +385,7 @@ export function AttendanceGrid({
                           </td>
                         </tr>
                         {sitesWithUsers.unassignedUsers.map((user) => {
-                          const userAttendance = attendanceMap.get(user.id) || new Set();
+                          const userAttendance = attendanceMap.get(user.id) || new Map();
                           return (
                             <tr key={user.id} className="hover-elevate border-b last:border-b-0">
                               <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">

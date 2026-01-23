@@ -64,17 +64,22 @@ Preferred communication style: Simple, everyday language.
   - Under 1 year service: 1 day per month (expires after 1 year)
   - 1+ years service: 15 days per year (valid for 2 years)
   - 3+ years service: 15 days + 1 day per 2 years of service (max 25 days)
-- **Vacation Types**: 연차 (annual), 반차 (half-day), 병가 (sick), 기타 (other)
+- **Vacation Types**: 연차 (annual), 반차 (half-day), 병가 (sick), 경조사 (family_event), 기타 (other)
 - **Guard Features** (`/guard/vacation`):
   - View leave balance with detailed accrual breakdown
   - Submit vacation requests with date range and reason
   - View request history and status
 - **Admin Features**:
-  - `/admin/vacation-requests`: Approve/reject vacation requests, send email with PDF
+  - `/admin/vacation-requests`: Approve/reject/delete vacation requests, send email with PDF
   - `/admin/vacation-status`: View vacation status by site/person, directly add/edit/delete vacation records
   - Admin-created vacations are auto-approved
   - PDF export of vacation requests and status reports
   - Email integration for sending vacation documents to contacts
+- **Vacation-Attendance Integration**:
+  - When vacation is approved, attendance records are automatically created for each vacation day
+  - Attendance grid displays vacation types with different symbols: 연(연차), 반(반차), 병(병가), 경(경조사), 기(기타)
+  - Admin can edit these vacation-based attendance records from the attendance grid
+  - Deleting a vacation request also removes the associated attendance records
 - **Key Files**: 
   - `shared/leave-utils.ts` - Annual leave calculation logic
   - `server/vacation-pdf-generator.ts` - PDF generation for vacation documents

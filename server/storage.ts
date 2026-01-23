@@ -39,8 +39,10 @@ export interface IStorage {
   getTodayAttendanceLog(userId: string, date: string): Promise<AttendanceLog | undefined>;
   getAttendanceLogByUserAndDate(userId: string, date: string): Promise<AttendanceLog | undefined>;
   createAttendanceLog(log: InsertAttendanceLog): Promise<AttendanceLog>;
+  updateAttendanceLog(id: string, data: Partial<AttendanceLog>): Promise<AttendanceLog | undefined>;
   deleteAttendanceLog(id: string): Promise<void>;
   deleteAttendanceLogByUserAndDate(userId: string, date: string): Promise<void>;
+  deleteAttendanceLogsByVacationId(vacationId: string): Promise<void>;
   
   getVacationRequests(): Promise<VacationRequest[]>;
   getVacationRequestsByUser(userId: string): Promise<VacationRequest[]>;
@@ -191,6 +193,15 @@ export class DatabaseStorage implements IStorage {
     await db.delete(attendanceLogs).where(
       and(eq(attendanceLogs.userId, userId), eq(attendanceLogs.checkInDate, date))
     );
+  }
+
+  async updateAttendanceLog(id: string, data: Partial<AttendanceLog>): Promise<AttendanceLog | undefined> {
+    const [updated] = await db.update(attendanceLogs).set(data).where(eq(attendanceLogs.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async deleteAttendanceLogsByVacationId(vacationId: string): Promise<void> {
+    await db.delete(attendanceLogs).where(eq(attendanceLogs.vacationRequestId, vacationId));
   }
 
   async getVacationRequests(): Promise<VacationRequest[]> {

@@ -1,15 +1,63 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema, insertVacationRequestSchema } from "@shared/schema";
+import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema, insertVacationRequestSchema, type VacationRequest } from "@shared/schema";
 import { sendEmail } from "./email";
 import { generateAttendancePdf } from "./pdf-generator";
 import { generateVacationPdf, generateVacationStatusPdf } from "./vacation-pdf-generator";
 import { z } from "zod";
-import { startOfMonth, endOfMonth, format, differenceInDays } from "date-fns";
+import { startOfMonth, endOfMonth, format, differenceInDays, eachDayOfInterval, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
 import bcrypt from "bcryptjs";
 import { calculateAnnualLeave } from "@shared/leave-utils";
+
+// Helper function to create attendance records for vacation days
+async function createVacationAttendanceRecords(vacation: VacationRequest): Promise<void> {
+  const user = await storage.getUser(vacation.userId);
+  if (!user || !user.siteId) return;
+  
+  // Map vacation type to attendance type
+  const attendanceTypeMap: Record<string, "annual" | "half_day" | "sick" | "family_event" | "other"> = {
+    annual: "annual",
+    half_day: "half_day", 
+    sick: "sick",
+    family_event: "family_event",
+    other: "other",
+  };
+  
+  const attendanceType = attendanceTypeMap[vacation.vacationType] || "annual";
+  const startDate = parseISO(vacation.startDate);
+  const endDate = parseISO(vacation.endDate);
+  const dates = eachDayOfInterval({ start: startDate, end: endDate });
+  
+  for (const date of dates) {
+    const dateStr = format(date, "yyyy-MM-dd");
+    
+    // Check if attendance log already exists for this date
+    const existing = await storage.getAttendanceLogByUserAndDate(vacation.userId, dateStr);
+    if (existing) {
+      // Update existing record with vacation info
+      await storage.updateAttendanceLog(existing.id, {
+        attendanceType,
+        vacationRequestId: vacation.id,
+      });
+    } else {
+      // Create new attendance record for vacation
+      await storage.createAttendanceLog({
+        userId: vacation.userId,
+        siteId: user.siteId,
+        checkInDate: dateStr,
+        attendanceType,
+        vacationRequestId: vacation.id,
+      });
+    }
+  }
+}
+
+// Helper function to delete attendance records for vacation
+async function deleteVacationAttendanceRecords(vacationId: string): Promise<void> {
+  await storage.deleteAttendanceLogsByVacationId(vacationId);
+}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
@@ -673,6 +721,14 @@ export async function registerRoutes(
         END $$;
       `);
       
+      await pool.query(`
+        DO $$ BEGIN
+          CREATE TYPE attendance_type AS ENUM ('normal', 'annual', 'half_day', 'sick', 'family_event', 'other');
+        EXCEPTION
+          WHEN duplicate_object THEN null;
+        END $$;
+      `);
+      
       // Create tables if they don't exist
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -707,9 +763,19 @@ export async function registerRoutes(
           check_in_time TIMESTAMP NOT NULL DEFAULT NOW(),
           check_in_date DATE NOT NULL,
           latitude TEXT,
-          longitude TEXT
+          longitude TEXT,
+          attendance_type attendance_type NOT NULL DEFAULT 'normal',
+          vacation_request_id VARCHAR
         );
       `);
+      
+      // Add new columns if they don't exist (for existing databases)
+      await pool.query(`
+        ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS attendance_type attendance_type NOT NULL DEFAULT 'normal';
+      `).catch(() => {});
+      await pool.query(`
+        ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS vacation_request_id VARCHAR;
+      `).catch(() => {});
       
       await pool.query(`
         CREATE TABLE IF NOT EXISTS vacation_requests (
@@ -1071,6 +1137,9 @@ export async function registerRoutes(
           respondedAt: new Date(),
           respondedBy: req.session.userId,
         }))!;
+        
+        // Create attendance records for the approved vacation
+        await createVacationAttendanceRecords(vacation);
       }
       
       res.status(201).json(vacation);
@@ -1095,6 +1164,9 @@ export async function registerRoutes(
       if (!vacation) {
         return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
       }
+      
+      // Create attendance records for the approved vacation
+      await createVacationAttendanceRecords(vacation);
       
       res.json(vacation);
     } catch (error) {
@@ -1172,6 +1244,10 @@ export async function registerRoutes(
   app.delete("/api/vacations/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
+      
+      // Delete associated attendance records first
+      await deleteVacationAttendanceRecords(id);
+      
       await storage.deleteVacationRequest(id);
       res.status(204).send();
     } catch (error) {

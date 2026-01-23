@@ -39,6 +39,8 @@ export const sitesRelations = relations(sites, ({ many }) => ({
   attendanceLogs: many(attendanceLogs),
 }));
 
+export const attendanceTypeEnum = pgEnum("attendance_type", ["normal", "annual", "half_day", "sick", "family_event", "other"]);
+
 export const attendanceLogs = pgTable("attendance_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -47,6 +49,8 @@ export const attendanceLogs = pgTable("attendance_logs", {
   checkInDate: date("check_in_date").notNull(),
   latitude: text("latitude"),
   longitude: text("longitude"),
+  attendanceType: attendanceTypeEnum("attendance_type").notNull().default("normal"),
+  vacationRequestId: varchar("vacation_request_id"),
 });
 
 export const attendanceLogsRelations = relations(attendanceLogs, ({ one }) => ({
