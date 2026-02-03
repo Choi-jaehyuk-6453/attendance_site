@@ -235,7 +235,16 @@ export function AttendanceGrid({
   const companyName = company === "mirae_abm" ? "㈜미래에이비엠" : "㈜다원피엠씨";
   const logoPath = company === "mirae_abm" ? miraeLogoPath : dawonLogoPath;
 
-  const totalActiveUsers = activeUsers.length;
+  // Calculate user count based on selected site
+  const siteUserCount = useMemo(() => {
+    if (selectedSiteId) {
+      // Count only users assigned to the selected site
+      return activeUsers.filter(u => u.siteId === selectedSiteId).length;
+    }
+    // If no site selected, count all active users
+    return activeUsers.length;
+  }, [activeUsers, selectedSiteId]);
+
   const siteName = selectedSiteId 
     ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
     : "전체 현장";
@@ -296,7 +305,7 @@ export function AttendanceGrid({
             </div>
             <div className="flex items-center gap-4 text-sm">
               <span className="text-muted-foreground">현장명: <strong className="text-foreground">{siteName}</strong></span>
-              <span className="text-muted-foreground">인원: <strong className="text-foreground">{totalActiveUsers}명</strong></span>
+              <span className="text-muted-foreground">인원: <strong className="text-foreground">{siteUserCount}명</strong></span>
               {isAdmin && (
                 <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
                   클릭하여 출근 수정
