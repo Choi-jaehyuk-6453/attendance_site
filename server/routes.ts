@@ -203,7 +203,7 @@ export async function registerRoutes(
   app.patch("/api/users/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, phone, hireDate, siteId, isActive } = req.body;
+      const { name, phone, hireDate, siteId, isActive, shift } = req.body;
       
       const updateData: any = {};
       if (name !== undefined) {
@@ -221,6 +221,7 @@ export async function registerRoutes(
       if (hireDate !== undefined) updateData.hireDate = hireDate;
       if (siteId !== undefined) updateData.siteId = siteId;
       if (isActive !== undefined) updateData.isActive = isActive;
+      if (shift !== undefined) updateData.shift = shift;
       
       const user = await storage.updateUser(id, updateData);
       if (!user) {
