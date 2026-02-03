@@ -59,7 +59,16 @@ const guardSchema = z.object({
 
 const editGuardSchema = guardSchema.extend({
   siteId: z.string().optional(),
+  shift: z.string().optional(),
 });
+
+const shiftLabels: Record<string, string> = {
+  day: "주간",
+  A: "A조",
+  B: "B조",
+  C: "C조",
+  D: "D조",
+};
 
 type GuardForm = z.infer<typeof guardSchema>;
 type EditGuardForm = z.infer<typeof editGuardSchema>;
@@ -96,6 +105,7 @@ export default function UsersPage() {
       phone: "",
       hireDate: "",
       siteId: "",
+      shift: "day",
     },
   });
 
@@ -147,6 +157,7 @@ export default function UsersPage() {
         phone: data.phone,
         hireDate: data.hireDate || null,
         siteId: data.siteId === "none" ? null : data.siteId,
+        shift: data.shift || "day",
       });
       return res.json();
     },
@@ -221,9 +232,31 @@ export default function UsersPage() {
       phone: user.phone || "",
       hireDate: user.hireDate || "",
       siteId: user.siteId || "none",
+      shift: user.shift || "day",
     });
     setEditDialogOpen(true);
   };
+
+  const updateShiftMutation = useMutation({
+    mutationFn: async ({ userId, shift }: { userId: string; shift: string }) => {
+      const res = await apiRequest("PATCH", `/api/users/${userId}`, { shift });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "조 변경 완료",
+        description: "근무 조가 변경되었습니다.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "변경 실패",
+        description: error.message || "조 변경 중 오류가 발생했습니다.",
+      });
+    },
+  });
 
   const handleDelete = (user: User) => {
     setSelectedUser(user);
@@ -438,6 +471,7 @@ export default function UsersPage() {
                 <tr>
                   <th className="p-3 text-left font-medium">상태</th>
                   <th className="p-3 text-left font-medium">이름</th>
+                  <th className="p-3 text-left font-medium">조</th>
                   {selectedSiteId === "all" && (
                     <th className="p-3 text-left font-medium">현장</th>
                   )}
@@ -449,7 +483,7 @@ export default function UsersPage() {
               <tbody>
                 {siteGuards.length === 0 ? (
                   <tr>
-                    <td colSpan={selectedSiteId === "all" ? 6 : 5} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={selectedSiteId === "all" ? 7 : 6} className="p-8 text-center text-muted-foreground">
                       등록된 근무자가 없습니다
                     </td>
                   </tr>
@@ -469,6 +503,23 @@ export default function UsersPage() {
                         </Badge>
                       </td>
                       <td className="p-3 font-medium">{user.name}</td>
+                      <td className="p-3">
+                        <Select
+                          value={user.shift || "day"}
+                          onValueChange={(value) => updateShiftMutation.mutate({ userId: user.id, shift: value })}
+                        >
+                          <SelectTrigger className="h-8 w-[80px]" data-testid={`select-shift-${user.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="day">주간</SelectItem>
+                            <SelectItem value="A">A조</SelectItem>
+                            <SelectItem value="B">B조</SelectItem>
+                            <SelectItem value="C">C조</SelectItem>
+                            <SelectItem value="D">D조</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
                       {selectedSiteId === "all" && (
                         <td className="p-3 text-muted-foreground">
                           {sites.find(s => s.id === user.siteId)?.name || "미배정"}
@@ -622,6 +673,33 @@ export default function UsersPage() {
                             {site.name}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="shift"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>근무 조</FormLabel>
+                    <Select
+                      value={field.value || "day"}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-guard-shift">
+                          <SelectValue placeholder="조 선택" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="day">주간</SelectItem>
+                        <SelectItem value="A">A조</SelectItem>
+                        <SelectItem value="B">B조</SelectItem>
+                        <SelectItem value="C">C조</SelectItem>
+                        <SelectItem value="D">D조</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

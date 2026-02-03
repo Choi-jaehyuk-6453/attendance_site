@@ -235,15 +235,26 @@ export function AttendanceGrid({
   const companyName = company === "mirae_abm" ? "㈜미래에이비엠" : "㈜다원피엠씨";
   const logoPath = company === "mirae_abm" ? miraeLogoPath : dawonLogoPath;
 
-  // Calculate user count based on selected site
+  // Shift sort order: 주간(day), A, B, C, D
+  const shiftOrder: Record<string, number> = { day: 0, A: 1, B: 2, C: 3, D: 4 };
+  const shiftLabels: Record<string, string> = { day: "주간", A: "A조", B: "B조", C: "C조", D: "D조" };
+  
+  // Sort users by shift
+  const sortUsersByShift = (usersList: User[]) => {
+    return [...usersList].sort((a, b) => {
+      const orderA = shiftOrder[a.shift || "day"] ?? 99;
+      const orderB = shiftOrder[b.shift || "day"] ?? 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name, "ko");
+    });
+  };
+
+  // Calculate user count based on actual displayed users
   const siteUserCount = useMemo(() => {
-    if (selectedSiteId) {
-      // Count only users assigned to the selected site
-      return activeUsers.filter(u => u.siteId === selectedSiteId).length;
-    }
-    // If no site selected, count all active users
-    return activeUsers.length;
-  }, [activeUsers, selectedSiteId]);
+    const displayedUsers = sitesWithUsers.sitesData.reduce((acc, data) => acc + data.users.length, 0) 
+      + sitesWithUsers.unassignedUsers.length;
+    return displayedUsers;
+  }, [sitesWithUsers]);
 
   const siteName = selectedSiteId 
     ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
@@ -354,32 +365,37 @@ export function AttendanceGrid({
                   </tr>
                 ) : (
                   <>
-                    {sitesWithUsers.sitesData.map(({ site, users: siteUsers }) => (
-                      <Fragment key={`site-group-${site.id}`}>
-                        <tr className="bg-muted/30">
-                          <td
-                            colSpan={daysInMonth + 1}
-                            className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-primary border-b"
-                          >
-                            {site.name}
-                            <span className="text-muted-foreground font-normal ml-2">
-                              ({siteUsers.length}명)
-                            </span>
-                          </td>
-                        </tr>
-                        {siteUsers.map((user) => {
-                          const userAttendance = attendanceMap.get(user.id) || new Map();
-                          return (
-                            <tr key={user.id} className="hover-elevate border-b">
-                              <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
-                                {user.name}
-                              </td>
-                              {days.map((day) => renderAttendanceCell(user, day, userAttendance, site.id))}
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    ))}
+                    {sitesWithUsers.sitesData.map(({ site, users: siteUsers }) => {
+                      const sortedUsers = sortUsersByShift(siteUsers);
+                      return (
+                        <Fragment key={`site-group-${site.id}`}>
+                          <tr className="bg-muted/30">
+                            <td
+                              colSpan={daysInMonth + 1}
+                              className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-primary border-b"
+                            >
+                              {site.name}
+                              <span className="text-muted-foreground font-normal ml-2">
+                                ({siteUsers.length}명)
+                              </span>
+                            </td>
+                          </tr>
+                          {sortedUsers.map((user) => {
+                            const userAttendance = attendanceMap.get(user.id) || new Map();
+                            const shiftLabel = shiftLabels[user.shift || "day"] || "주간";
+                            return (
+                              <tr key={user.id} className="hover-elevate border-b">
+                                <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                                  <span>{user.name}</span>
+                                  <span className="ml-1 text-xs text-muted-foreground">({shiftLabel})</span>
+                                </td>
+                                {days.map((day) => renderAttendanceCell(user, day, userAttendance, site.id))}
+                              </tr>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })}
                     {sitesWithUsers.unassignedUsers.length > 0 && (
                       <>
                         <tr className="bg-muted/30">
@@ -393,12 +409,14 @@ export function AttendanceGrid({
                             </span>
                           </td>
                         </tr>
-                        {sitesWithUsers.unassignedUsers.map((user) => {
+                        {sortUsersByShift(sitesWithUsers.unassignedUsers).map((user) => {
                           const userAttendance = attendanceMap.get(user.id) || new Map();
+                          const shiftLabel = shiftLabels[user.shift || "day"] || "주간";
                           return (
                             <tr key={user.id} className="hover-elevate border-b last:border-b-0">
                               <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
-                                {user.name}
+                                <span>{user.name}</span>
+                                <span className="ml-1 text-xs text-muted-foreground">({shiftLabel})</span>
                               </td>
                               {days.map((day) => renderAttendanceCell(user, day, userAttendance, user.siteId || ""))}
                             </tr>

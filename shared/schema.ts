@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export const roleEnum = pgEnum("role", ["admin", "guard"]);
 export const companyEnum = pgEnum("company", ["mirae_abm", "dawon_pmc"]);
+export const shiftEnum = pgEnum("shift", ["day", "A", "B", "C", "D"]);
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -16,6 +17,7 @@ export const users = pgTable("users", {
   phone: text("phone"),
   siteId: varchar("site_id"),
   hireDate: date("hire_date"),
+  shift: shiftEnum("shift").default("day"),
   isActive: boolean("is_active").notNull().default(true),
 });
 
