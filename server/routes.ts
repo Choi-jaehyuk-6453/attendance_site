@@ -459,12 +459,19 @@ export async function registerRoutes(
     }
   });
 
+  const validAttendanceTypes = ["normal", "annual", "half_day", "sick", "family_event", "other"] as const;
+
   app.post("/api/admin/attendance", requireAdmin, async (req, res) => {
     try {
-      const { userId, siteId, checkInDate } = req.body;
+      const { userId, siteId, checkInDate, attendanceType } = req.body;
       
       if (!userId || !siteId || !checkInDate) {
         return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
+      }
+
+      const resolvedType = attendanceType || "normal";
+      if (!validAttendanceTypes.includes(resolvedType)) {
+        return res.status(400).json({ error: "유효하지 않은 출근/휴가 유형입니다" });
       }
       
       const user = await storage.getUser(userId);
@@ -488,12 +495,38 @@ export async function registerRoutes(
         checkInDate,
         latitude: null,
         longitude: null,
+        attendanceType: resolvedType,
       });
       
       res.status(201).json(log);
     } catch (error) {
       console.error("Admin create attendance error:", error);
       res.status(500).json({ error: "출근 기록 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.patch("/api/admin/attendance", requireAdmin, async (req, res) => {
+    try {
+      const { userId, checkInDate, attendanceType } = req.body;
+      
+      if (!userId || !checkInDate || !attendanceType) {
+        return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
+      }
+
+      if (!validAttendanceTypes.includes(attendanceType)) {
+        return res.status(400).json({ error: "유효하지 않은 출근/휴가 유형입니다" });
+      }
+      
+      const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
+      if (!existingLog) {
+        return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
+      }
+      
+      const updated = await storage.updateAttendanceLog(existingLog.id, { attendanceType });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin update attendance error:", error);
+      res.status(500).json({ error: "출근 기록 수정 중 오류가 발생했습니다" });
     }
   });
 

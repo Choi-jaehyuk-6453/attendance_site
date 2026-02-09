@@ -14,6 +14,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { User, AttendanceLog, Site } from "@shared/schema";
 import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
 import dawonLogoPath from "@assets/다원PMC_LOGO_1768444471518.png";
@@ -40,13 +48,15 @@ export function AttendanceGrid({
   const { toast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
-    action: "add" | "remove";
+    action: "add" | "edit" | "remove";
     userId: string;
     userName: string;
     siteId: string;
     date: string;
     day: number;
+    currentType?: string;
   } | null>(null);
+  const [selectedType, setSelectedType] = useState<string>("normal");
 
   const daysInMonth = getDaysInMonth(selectedMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -146,23 +156,54 @@ export function AttendanceGrid({
     }
   };
 
+  const attendanceTypeOptions = [
+    { value: "normal", label: "출근 (O)" },
+    { value: "annual", label: "연차 (연)" },
+    { value: "half_day", label: "반차 (반)" },
+    { value: "sick", label: "병가 (병)" },
+    { value: "family_event", label: "경조사 (경)" },
+    { value: "other", label: "기타 (기)" },
+  ];
+
   const addAttendanceMutation = useMutation({
-    mutationFn: async (data: { userId: string; siteId: string; checkInDate: string }) => {
+    mutationFn: async (data: { userId: string; siteId: string; checkInDate: string; attendanceType: string }) => {
       const res = await apiRequest("POST", "/api/admin/attendance", data);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
       toast({
-        title: "출근 등록 완료",
-        description: "출근 기록이 추가되었습니다.",
+        title: "등록 완료",
+        description: "기록이 추가되었습니다.",
       });
       setConfirmDialog(null);
     },
     onError: (error: Error) => {
       toast({
         title: "오류",
-        description: error.message || "출근 등록에 실패했습니다.",
+        description: error.message || "등록에 실패했습니다.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateAttendanceMutation = useMutation({
+    mutationFn: async (data: { userId: string; checkInDate: string; attendanceType: string }) => {
+      const res = await apiRequest("PATCH", "/api/admin/attendance", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
+      toast({
+        title: "수정 완료",
+        description: "기록이 수정되었습니다.",
+      });
+      setConfirmDialog(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "오류",
+        description: error.message || "수정에 실패했습니다.",
         variant: "destructive",
       });
     },
@@ -175,23 +216,23 @@ export function AttendanceGrid({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
       toast({
-        title: "출근 취소 완료",
-        description: "출근 기록이 삭제되었습니다.",
+        title: "삭제 완료",
+        description: "기록이 삭제되었습니다.",
       });
       setConfirmDialog(null);
     },
     onError: (error: Error) => {
       toast({
         title: "오류",
-        description: error.message || "출근 취소에 실패했습니다.",
+        description: error.message || "삭제에 실패했습니다.",
         variant: "destructive",
       });
     },
   });
 
-  const handleCellClick = (user: User, day: number, hasAttendance: boolean, siteId: string) => {
+  const handleCellClick = (user: User, day: number, attendanceInfo: { type: string } | undefined, siteId: string) => {
     if (!isAdmin) return;
-    if (!siteId && !hasAttendance) {
+    if (!siteId && !attendanceInfo) {
       toast({
         title: "알림",
         description: "미배치 근무자는 현장 배정 후 출근 등록이 가능합니다.",
@@ -204,15 +245,30 @@ export function AttendanceGrid({
     const month = selectedMonth.getMonth();
     const checkInDate = format(new Date(year, month, day), "yyyy-MM-dd");
     
-    setConfirmDialog({
-      open: true,
-      action: hasAttendance ? "remove" : "add",
-      userId: user.id,
-      userName: user.name,
-      siteId,
-      date: checkInDate,
-      day,
-    });
+    if (attendanceInfo) {
+      setSelectedType(attendanceInfo.type);
+      setConfirmDialog({
+        open: true,
+        action: "edit",
+        userId: user.id,
+        userName: user.name,
+        siteId,
+        date: checkInDate,
+        day,
+        currentType: attendanceInfo.type,
+      });
+    } else {
+      setSelectedType("normal");
+      setConfirmDialog({
+        open: true,
+        action: "add",
+        userId: user.id,
+        userName: user.name,
+        siteId,
+        date: checkInDate,
+        day,
+      });
+    }
   };
 
   const handleConfirm = () => {
@@ -223,13 +279,27 @@ export function AttendanceGrid({
         userId: confirmDialog.userId,
         siteId: confirmDialog.siteId,
         checkInDate: confirmDialog.date,
+        attendanceType: selectedType,
       });
-    } else {
-      removeAttendanceMutation.mutate({
-        userId: confirmDialog.userId,
-        checkInDate: confirmDialog.date,
-      });
+    } else if (confirmDialog.action === "edit") {
+      if (selectedType !== confirmDialog.currentType) {
+        updateAttendanceMutation.mutate({
+          userId: confirmDialog.userId,
+          checkInDate: confirmDialog.date,
+          attendanceType: selectedType,
+        });
+      } else {
+        setConfirmDialog(null);
+      }
     }
+  };
+
+  const handleDelete = () => {
+    if (!confirmDialog) return;
+    removeAttendanceMutation.mutate({
+      userId: confirmDialog.userId,
+      checkInDate: confirmDialog.date,
+    });
   };
 
   const companyName = company === "mirae_abm" ? "㈜미래에이비엠" : "㈜다원피엠씨";
@@ -262,7 +332,6 @@ export function AttendanceGrid({
 
   const renderAttendanceCell = (user: User, day: number, userAttendance: Map<number, { type: string }>, siteId: string) => {
     const attendance = userAttendance.get(day);
-    const hasAttendance = !!attendance;
     const display = attendance ? getAttendanceDisplay(attendance.type) : null;
     
     if (isAdmin) {
@@ -270,10 +339,10 @@ export function AttendanceGrid({
         <td
           key={day}
           className="w-9 min-w-[36px] p-1 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-          onClick={() => handleCellClick(user, day, hasAttendance, siteId)}
+          onClick={() => handleCellClick(user, day, attendance, siteId)}
           data-testid={`cell-attendance-${user.id}-${day}`}
         >
-          {hasAttendance && display ? (
+          {attendance && display ? (
             <span className={`font-bold ${display.color}`}>{display.text}</span>
           ) : (
             <span className="text-muted-foreground/30">-</span>
@@ -287,7 +356,7 @@ export function AttendanceGrid({
         key={day}
         className="w-9 min-w-[36px] p-1 text-center"
       >
-        {hasAttendance && display ? (
+        {attendance && display ? (
           <span className={`font-bold ${display.color}`}>{display.text}</span>
         ) : (
           <span className="text-muted-foreground/30">-</span>
@@ -437,34 +506,57 @@ export function AttendanceGrid({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {confirmDialog?.action === "add" ? "출근 등록" : "출근 취소"}
+              {confirmDialog?.action === "add" ? "출근/휴가 등록" : "출근/휴가 수정"}
             </DialogTitle>
             <DialogDescription>
-              {confirmDialog?.action === "add" 
-                ? `${confirmDialog?.userName}님의 ${confirmDialog?.day}일 출근을 등록하시겠습니까?`
-                : `${confirmDialog?.userName}님의 ${confirmDialog?.day}일 출근을 취소하시겠습니까?`
-              }
+              {confirmDialog?.userName}님 - {confirmDialog?.day}일
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setConfirmDialog(null)}
-              data-testid="button-cancel-attendance"
-            >
-              취소
-            </Button>
-            <Button 
-              onClick={handleConfirm}
-              disabled={addAttendanceMutation.isPending || removeAttendanceMutation.isPending}
-              variant={confirmDialog?.action === "remove" ? "destructive" : "default"}
-              data-testid="button-confirm-attendance"
-            >
-              {addAttendanceMutation.isPending || removeAttendanceMutation.isPending 
-                ? "처리중..." 
-                : "확인"
-              }
-            </Button>
+          <div className="py-4">
+            <Label className="text-sm font-medium mb-2 block">유형 선택</Label>
+            <Select value={selectedType} onValueChange={setSelectedType}>
+              <SelectTrigger data-testid="select-attendance-type">
+                <SelectValue placeholder="유형 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {attendanceTypeOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} data-testid={`option-type-${opt.value}`}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="flex-wrap gap-2">
+            {confirmDialog?.action === "edit" && (
+              <Button 
+                variant="destructive" 
+                onClick={handleDelete}
+                disabled={removeAttendanceMutation.isPending}
+                data-testid="button-delete-attendance"
+              >
+                {removeAttendanceMutation.isPending ? "삭제중..." : "삭제"}
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button 
+                variant="outline" 
+                onClick={() => setConfirmDialog(null)}
+                data-testid="button-cancel-attendance"
+              >
+                취소
+              </Button>
+              <Button 
+                onClick={handleConfirm}
+                disabled={addAttendanceMutation.isPending || updateAttendanceMutation.isPending}
+                data-testid="button-confirm-attendance"
+              >
+                {addAttendanceMutation.isPending || updateAttendanceMutation.isPending
+                  ? "처리중..." 
+                  : confirmDialog?.action === "add" ? "등록" : "수정"
+                }
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
