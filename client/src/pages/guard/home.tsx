@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format, startOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
+import { getKSTNow, getKSTToday, getKSTCurrentMonth } from "@shared/kst-utils";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,8 +34,8 @@ export default function GuardHome() {
   const [todayCheckedIn, setTodayCheckedIn] = useState(false);
   const [location, setGeoLocation] = useState<{ lat: string; lng: string } | null>(null);
 
-  const today = format(new Date(), "yyyy-MM-dd");
-  const currentMonth = format(startOfMonth(new Date()), "yyyy-MM");
+  const today = getKSTToday();
+  const currentMonth = getKSTCurrentMonth();
 
   const { data: todayLog } = useQuery<AttendanceLog | null>({
     queryKey: ["/api/attendance/today", user?.id],
@@ -205,7 +206,7 @@ export default function GuardHome() {
           </div>
           <p className="text-muted-foreground">{displayLocation}</p>
           <p className="text-sm text-muted-foreground">
-            {format(new Date(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
+            {format(getKSTNow(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
           </p>
         </div>
 
@@ -301,7 +302,7 @@ export default function GuardHome() {
           <CardContent>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">
-                {format(new Date(), "yyyy년 M월", { locale: ko })}
+                {format(getKSTNow(), "yyyy년 M월", { locale: ko })}
               </span>
               <span className="text-2xl font-bold">
                 {monthLogs.length}

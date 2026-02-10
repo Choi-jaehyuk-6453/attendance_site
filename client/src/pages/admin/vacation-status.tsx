@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { getKSTNow, getKSTYear } from "@shared/kst-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +46,7 @@ import type { VacationRequest, User as UserType, Site, Contact } from "@shared/s
 export default function AdminVacationStatus() {
   const { toast } = useToast();
   const [selectedSiteId, setSelectedSiteId] = useState<string>("all");
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(getKSTYear());
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingVacation, setEditingVacation] = useState<VacationRequest | null>(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -168,7 +169,7 @@ export default function AdminVacationStatus() {
     
     let totalAccrued = 0;
     if (user.hireDate) {
-      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
+      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays, getKSTNow());
       totalAccrued = balance.totalAccrued;
     }
     
@@ -183,7 +184,7 @@ export default function AdminVacationStatus() {
     };
   };
 
-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+  const years = Array.from({ length: 5 }, (_, i) => getKSTYear() - i);
 
   return (
     <div className="p-6 space-y-6">

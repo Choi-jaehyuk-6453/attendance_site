@@ -10,6 +10,7 @@ import { startOfMonth, endOfMonth, format, differenceInDays, eachDayOfInterval, 
 import { ko } from "date-fns/locale";
 import bcrypt from "bcryptjs";
 import { calculateAnnualLeave } from "@shared/leave-utils";
+import { getKSTNow, getKSTToday, getKSTYear } from "@shared/kst-utils";
 
 // Helper function to create attendance records for vacation days
 async function createVacationAttendanceRecords(vacation: VacationRequest): Promise<void> {
@@ -345,7 +346,7 @@ export async function registerRoutes(
         startDate = format(start, "yyyy-MM-dd");
         endDate = format(end, "yyyy-MM-dd");
       } else {
-        const now = new Date();
+        const now = getKSTNow();
         const start = startOfMonth(now);
         const end = endOfMonth(now);
         startDate = format(start, "yyyy-MM-dd");
@@ -368,7 +369,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "접근 권한이 없습니다" });
       }
       
-      const today = format(new Date(), "yyyy-MM-dd");
+      const today = getKSTToday();
       const log = await storage.getTodayAttendanceLog(userId, today);
       res.json(log || null);
     } catch (error) {
@@ -396,7 +397,7 @@ export async function registerRoutes(
         startDate = format(start, "yyyy-MM-dd");
         endDate = format(end, "yyyy-MM-dd");
       } else {
-        const now = new Date();
+        const now = getKSTNow();
         const start = startOfMonth(now);
         const end = endOfMonth(now);
         startDate = format(start, "yyyy-MM-dd");
@@ -623,7 +624,7 @@ export async function registerRoutes(
         isActive: true,
       });
 
-      const today = new Date();
+      const today = getKSTNow();
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       const twoDaysAgo = new Date(today);
@@ -1089,7 +1090,7 @@ export async function registerRoutes(
         .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
         .reduce((sum, v) => sum + (v.days || 1), 0);
       
-      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
+      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays, getKSTNow());
       res.json(balance);
     } catch (error) {
       console.error("Get leave balance error:", error);
@@ -1125,7 +1126,7 @@ export async function registerRoutes(
         .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
         .reduce((sum, v) => sum + (v.days || 1), 0);
       
-      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays);
+      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays, getKSTNow());
       res.json(balance);
     } catch (error) {
       console.error("Get user leave balance error:", error);
@@ -1340,7 +1341,7 @@ export async function registerRoutes(
       
       const selectedSite = siteId && siteId !== "all" ? sites.find(s => s.id === siteId) : null;
       const siteName = selectedSite?.name || "전체";
-      const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
+      const targetYear = year ? parseInt(year as string) : getKSTYear();
       
       const pdfBuffer = await generateVacationStatusPdf({
         users,
@@ -1469,7 +1470,7 @@ export async function registerRoutes(
       
       const selectedSite = siteId ? sites.find(s => s.id === siteId) : null;
       const siteName = selectedSite?.name || "전체";
-      const targetYear = year || new Date().getFullYear();
+      const targetYear = year || getKSTYear();
       
       const pdfBuffer = await generateVacationStatusPdf({
         users,

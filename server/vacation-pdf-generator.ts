@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import type { User, VacationRequest, Site } from "@shared/schema";
 import { getVacationTypeName, getVacationStatusName, calculateAnnualLeave } from "@shared/leave-utils";
+import { getKSTNow } from "@shared/kst-utils";
 
 interface GenerateVacationPdfOptions {
   vacation: VacationRequest;
@@ -295,7 +296,7 @@ export async function generateVacationStatusPdf(options: GenerateVacationStatusP
         
         let totalAccrued = 0;
         if (user.hireDate) {
-          const balance = calculateAnnualLeave(new Date(user.hireDate), approvedDays);
+          const balance = calculateAnnualLeave(new Date(user.hireDate), approvedDays, getKSTNow());
           totalAccrued = balance.totalAccrued;
         }
         

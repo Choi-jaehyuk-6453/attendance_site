@@ -1,5 +1,6 @@
 import { format, addMonths, subMonths } from "date-fns";
 import { ko } from "date-fns/locale";
+import { getKSTNow } from "@shared/kst-utils";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 
@@ -18,7 +19,7 @@ export function MonthSelector({ selectedMonth, onMonthChange }: MonthSelectorPro
   };
 
   const goToCurrentMonth = () => {
-    onMonthChange(new Date());
+    onMonthChange(getKSTNow());
   };
 
   return (

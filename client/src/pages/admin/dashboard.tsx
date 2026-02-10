@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { startOfMonth, format, isToday, getDate } from "date-fns";
+import { getKSTNow } from "@shared/kst-utils";
 import { AttendanceGrid } from "@/components/attendance-grid";
 import { StatsCards } from "@/components/stats-cards";
 import { MonthSelector } from "@/components/month-selector";
@@ -17,7 +18,7 @@ import { Building2 } from "lucide-react";
 import type { User, AttendanceLog, Site } from "@shared/schema";
 
 export default function AdminDashboard() {
-  const [selectedMonth, setSelectedMonth] = useState(startOfMonth(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState(startOfMonth(getKSTNow()));
   const [selectedCompany, setSelectedCompany] = useState<string>("all");
   const [selectedSiteId, setSelectedSiteId] = useState<string>("all");
 
@@ -63,7 +64,7 @@ export default function AdminDashboard() {
       filteredSitesForStats = filteredSitesForStats.filter(s => s.id === selectedSiteId);
     }
 
-    const today = new Date();
+    const today = getKSTNow();
     const todayStr = format(today, "yyyy-MM-dd");
     const todayAttendance = filteredLogs.filter(
       (log) => log.checkInDate === todayStr
