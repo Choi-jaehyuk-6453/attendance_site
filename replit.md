@@ -57,6 +57,7 @@ Preferred communication style: Simple, everyday language.
 - Export filenames include site name when a site is selected
 - Geolocation capture during check-in
 - Site-based guard management (guards are assigned to specific sites)
+- All date/time operations use Korean Standard Time (KST, Asia/Seoul) via `shared/kst-utils.ts`
 - Complete vacation management system
 
 ### Vacation Management System
@@ -121,7 +122,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Third-Party Libraries
 - **QR Code**: `qrcode` for generation, `html5-qrcode` for scanning
-- **Date Handling**: `date-fns` with Korean locale support
+- **Date Handling**: `date-fns` with `date-fns-tz` for Korean timezone (KST, Asia/Seoul) support and Korean locale
 - **Export**: `xlsx` for Excel files, `jspdf` with `jspdf-autotable` for PDF generation
 - **Validation**: Zod schemas with `drizzle-zod` for database-schema integration
 
