@@ -525,7 +525,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
       }
       
-      const updated = await storage.updateAttendanceLog(existingLog.id, { attendanceType });
+      const updateData: any = { attendanceType };
+      if (existingLog.source !== "vacation") {
+        updateData.source = "manual";
+      }
+      const updated = await storage.updateAttendanceLog(existingLog.id, updateData);
       res.json(updated);
     } catch (error) {
       console.error("Admin update attendance error:", error);
