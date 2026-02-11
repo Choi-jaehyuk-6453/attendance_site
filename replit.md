@@ -58,6 +58,8 @@ Preferred communication style: Simple, everyday language.
 - Geolocation capture during check-in
 - Site-based guard management (guards are assigned to specific sites)
 - All date/time operations use Korean Standard Time (KST, Asia/Seoul) via `shared/kst-utils.ts`
+- Attendance source tracking: QR check-in (qr), admin manual entry (manual), vacation auto-creation (vacation)
+- Excel export format: QR entries show time (HH:mm), manual entries show time with "(수동)", vacation entries show vacation type name
 - Complete vacation management system
 
 ### Vacation Management System

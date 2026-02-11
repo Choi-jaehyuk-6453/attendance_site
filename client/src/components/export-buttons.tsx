@@ -12,6 +12,7 @@ import {
 import { FileSpreadsheet, Mail, Printer } from "lucide-react";
 import { format, getDaysInMonth, startOfMonth, getDate } from "date-fns";
 import { ko } from "date-fns/locale";
+import { toZonedTime } from "date-fns-tz";
 import type { User, AttendanceLog, Site, Contact } from "@shared/schema";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -75,6 +76,14 @@ export function ExportButtons({
     },
   });
 
+  const vacationTypeNames: Record<string, string> = {
+    annual: "연차",
+    half_day: "반차",
+    sick: "병가",
+    family_event: "경조사",
+    other: "기타",
+  };
+
   const generateData = (company: "mirae_abm" | "dawon_pmc") => {
     const daysInMonth = getDaysInMonth(selectedMonth);
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -110,9 +119,26 @@ export function ExportButtons({
         if (!attendanceTimeMap.has(key)) {
           attendanceTimeMap.set(key, new Map());
         }
-        const checkInDate = new Date(log.checkInTime);
-        const checkInTime = format(checkInDate, "HH:mm");
-        attendanceTimeMap.get(key)!.set(day, checkInTime);
+
+        const source = (log as any).source || "qr";
+        const attendanceType = (log as any).attendanceType || "normal";
+        let displayText: string;
+
+        if (source === "vacation") {
+          displayText = vacationTypeNames[attendanceType] || "출근";
+        } else if (source === "manual") {
+          if (attendanceType !== "normal") {
+            displayText = vacationTypeNames[attendanceType] || "출근";
+          } else {
+            const kstTime = toZonedTime(new Date(log.checkInTime), "Asia/Seoul");
+            displayText = format(kstTime, "HH:mm") + "(수동)";
+          }
+        } else {
+          const kstTime = toZonedTime(new Date(log.checkInTime), "Asia/Seoul");
+          displayText = format(kstTime, "HH:mm");
+        }
+
+        attendanceTimeMap.get(key)!.set(day, displayText);
       }
     });
 

@@ -42,6 +42,7 @@ export const sitesRelations = relations(sites, ({ many }) => ({
 }));
 
 export const attendanceTypeEnum = pgEnum("attendance_type", ["normal", "annual", "half_day", "sick", "family_event", "other"]);
+export const attendanceSourceEnum = pgEnum("attendance_source", ["qr", "manual", "vacation"]);
 
 export const attendanceLogs = pgTable("attendance_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -52,6 +53,7 @@ export const attendanceLogs = pgTable("attendance_logs", {
   latitude: text("latitude"),
   longitude: text("longitude"),
   attendanceType: attendanceTypeEnum("attendance_type").notNull().default("normal"),
+  source: attendanceSourceEnum("source").notNull().default("qr"),
   vacationRequestId: varchar("vacation_request_id"),
 });
 

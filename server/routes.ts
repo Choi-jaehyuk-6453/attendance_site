@@ -37,18 +37,18 @@ async function createVacationAttendanceRecords(vacation: VacationRequest): Promi
     // Check if attendance log already exists for this date
     const existing = await storage.getAttendanceLogByUserAndDate(vacation.userId, dateStr);
     if (existing) {
-      // Update existing record with vacation info
       await storage.updateAttendanceLog(existing.id, {
         attendanceType,
+        source: "vacation",
         vacationRequestId: vacation.id,
       });
     } else {
-      // Create new attendance record for vacation
       await storage.createAttendanceLog({
         userId: vacation.userId,
         siteId: user.siteId,
         checkInDate: dateStr,
         attendanceType,
+        source: "vacation",
         vacationRequestId: vacation.id,
       });
     }
@@ -451,6 +451,7 @@ export async function registerRoutes(
         checkInDate,
         latitude: latitude || null,
         longitude: longitude || null,
+        source: "qr",
       });
       
       res.status(201).json({ ...log, siteName: site.name });
@@ -497,6 +498,7 @@ export async function registerRoutes(
         latitude: null,
         longitude: null,
         attendanceType: resolvedType,
+        source: "manual",
       });
       
       res.status(201).json(log);
