@@ -85,6 +85,18 @@ async function initializeDatabase() {
       );
     `);
     
+    // Data migration: fix source field for existing records
+    // Records with vacation_request_id should have source='vacation'
+    await pool.query(`
+      UPDATE attendance_logs SET source = 'vacation'
+      WHERE vacation_request_id IS NOT NULL AND source = 'qr';
+    `);
+    // Records with non-normal attendance_type and no vacation_request_id were manually created
+    await pool.query(`
+      UPDATE attendance_logs SET source = 'manual'
+      WHERE attendance_type != 'normal' AND vacation_request_id IS NULL AND source = 'qr';
+    `);
+
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Database initialization error:", error);
