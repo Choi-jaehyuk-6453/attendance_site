@@ -128,7 +128,7 @@ export function ExportButtons({
           displayText = vacationTypeNames[attendanceType] || "출근";
         } else if (source === "manual") {
           if (attendanceType !== "normal") {
-            displayText = vacationTypeNames[attendanceType] || "출근";
+            displayText = (vacationTypeNames[attendanceType] || "출근") + "(수동)";
           } else {
             const kstTime = toZonedTime(new Date(log.checkInTime), "Asia/Seoul");
             displayText = format(kstTime, "HH:mm") + "(수동)";

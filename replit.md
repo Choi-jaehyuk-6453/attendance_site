@@ -60,6 +60,7 @@ Preferred communication style: Simple, everyday language.
 - All date/time operations use Korean Standard Time (KST, Asia/Seoul) via `shared/kst-utils.ts`
 - Attendance source tracking: QR check-in (qr), admin manual entry (manual), vacation auto-creation (vacation)
 - Excel export format: QR entries show time (HH:mm), manual entries show time with "(수동)", vacation entries show vacation type name
+- Excel export: manual non-normal entries show "연차(수동)", "반차(수동)" etc. to distinguish from vacation-system entries
 - Complete vacation management system
 
 ### Vacation Management System
