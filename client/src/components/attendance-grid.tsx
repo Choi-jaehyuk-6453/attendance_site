@@ -22,29 +22,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { User, AttendanceLog, Site } from "@shared/schema";
-import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
-import dawonLogoPath from "@assets/다원PMC_LOGO_1768444471518.png";
+import type { User, AttendanceLog, Site, Department } from "@shared/schema";
 
 interface AttendanceGridProps {
   users: User[];
   attendanceLogs: AttendanceLog[];
   sites: Site[];
+  departments?: Department[];
   selectedMonth: Date;
   selectedSiteId?: string;
-  company: "mirae_abm" | "dawon_pmc";
   isAdmin?: boolean;
 }
 
-export function AttendanceGrid({
-  users,
-  attendanceLogs,
-  sites,
-  selectedMonth,
-  selectedSiteId,
-  company,
-  isAdmin = false,
-}: AttendanceGridProps) {
+export function AttendanceGrid(props: AttendanceGridProps) {
+  const {
+    users,
+    attendanceLogs,
+    sites,
+    selectedMonth,
+    selectedSiteId,
+    isAdmin = false,
+  } = props;
   const { toast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -61,13 +59,13 @@ export function AttendanceGrid({
   const daysInMonth = getDaysInMonth(selectedMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const activeUsers = users.filter((u) => u.company === company && u.role === "guard" && u.isActive);
-  const companySites = sites.filter((s) => s.company === company && s.isActive);
-  
+  const activeUsers = users.filter((u) => (u.role === "worker" || u.role === "site_manager") && u.isActive);
+  const activeSites = sites.filter((s) => s.isActive);
+
   const usersWithAttendanceInMonth = useMemo(() => {
     const monthStart = startOfMonth(selectedMonth);
     const userIdsWithAttendance = new Set<string>();
-    
+
     attendanceLogs.forEach((log) => {
       if (selectedSiteId && log.siteId !== selectedSiteId) return;
       const logDate = new Date(log.checkInDate);
@@ -78,21 +76,20 @@ export function AttendanceGrid({
         userIdsWithAttendance.add(log.userId);
       }
     });
-    
-    return users.filter((u) => 
-      u.company === company && 
-      u.role === "guard" && 
-      !u.isActive && 
+
+    return users.filter((u) =>
+      (u.role === "worker" || u.role === "site_manager") &&
+      !u.isActive &&
       userIdsWithAttendance.has(u.id)
     );
-  }, [users, attendanceLogs, selectedMonth, selectedSiteId, company]);
+  }, [users, attendanceLogs, selectedMonth, selectedSiteId]);
 
   const filteredUsers = [...activeUsers, ...usersWithAttendanceInMonth];
 
   const sitesWithUsers = useMemo(() => {
     const siteUserMap = new Map<string, { site: Site; users: User[] }>();
-    
-    companySites.forEach((site) => {
+
+    activeSites.forEach((site) => {
       if (selectedSiteId && site.id !== selectedSiteId) return;
       siteUserMap.set(site.id, { site, users: [] });
     });
@@ -109,24 +106,22 @@ export function AttendanceGrid({
       data.users.forEach((u) => usersWithSite.add(u.id));
     });
 
-    const usersWithoutSite = selectedSiteId 
-      ? [] 
+    const usersWithoutSite = selectedSiteId
+      ? []
       : filteredUsers.filter((u) => !usersWithSite.has(u.id));
 
     return {
       sitesData: Array.from(siteUserMap.values()).filter((d) => d.users.length > 0),
       unassignedUsers: usersWithoutSite,
     };
-  }, [companySites, filteredUsers, selectedSiteId]);
+  }, [activeSites, filteredUsers, selectedSiteId]);
 
-  // Map of userId -> Map of day -> attendance info (type and whether it exists)
+  // Map of userId -> Map of day -> attendance info
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Map<number, { type: string }>>();
     attendanceLogs.forEach((log) => {
       if (selectedSiteId && log.siteId !== selectedSiteId) return;
-      const user = users.find((u) => u.id === log.userId);
-      if (user?.company !== company) return;
-      
+
       const logDate = new Date(log.checkInDate);
       const monthStart = startOfMonth(selectedMonth);
       if (
@@ -137,14 +132,13 @@ export function AttendanceGrid({
         if (!map.has(key)) {
           map.set(key, new Map());
         }
-        const attendanceType = (log as AttendanceLog & { attendanceType?: string }).attendanceType || "normal";
+        const attendanceType = log.attendanceType || "normal";
         map.get(key)!.set(getDate(logDate), { type: attendanceType });
       }
     });
     return map;
-  }, [attendanceLogs, selectedMonth, selectedSiteId, company, users]);
+  }, [attendanceLogs, selectedMonth, selectedSiteId]);
 
-  // Helper to get display text for attendance type
   const getAttendanceDisplay = (type: string) => {
     switch (type) {
       case "annual": return { text: "연", color: "text-blue-600" };
@@ -172,18 +166,11 @@ export function AttendanceGrid({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
-      toast({
-        title: "등록 완료",
-        description: "기록이 추가되었습니다.",
-      });
+      toast({ title: "등록 완료", description: "기록이 추가되었습니다." });
       setConfirmDialog(null);
     },
     onError: (error: Error) => {
-      toast({
-        title: "오류",
-        description: error.message || "등록에 실패했습니다.",
-        variant: "destructive",
-      });
+      toast({ title: "오류", description: error.message || "등록에 실패했습니다.", variant: "destructive" });
     },
   });
 
@@ -194,18 +181,11 @@ export function AttendanceGrid({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
-      toast({
-        title: "수정 완료",
-        description: "기록이 수정되었습니다.",
-      });
+      toast({ title: "수정 완료", description: "기록이 수정되었습니다." });
       setConfirmDialog(null);
     },
     onError: (error: Error) => {
-      toast({
-        title: "오류",
-        description: error.message || "수정에 실패했습니다.",
-        variant: "destructive",
-      });
+      toast({ title: "오류", description: error.message || "수정에 실패했습니다.", variant: "destructive" });
     },
   });
 
@@ -215,18 +195,11 @@ export function AttendanceGrid({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
-      toast({
-        title: "삭제 완료",
-        description: "기록이 삭제되었습니다.",
-      });
+      toast({ title: "삭제 완료", description: "기록이 삭제되었습니다." });
       setConfirmDialog(null);
     },
     onError: (error: Error) => {
-      toast({
-        title: "오류",
-        description: error.message || "삭제에 실패했습니다.",
-        variant: "destructive",
-      });
+      toast({ title: "오류", description: error.message || "삭제에 실패했습니다.", variant: "destructive" });
     },
   });
 
@@ -240,11 +213,11 @@ export function AttendanceGrid({
       });
       return;
     }
-    
+
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
     const checkInDate = format(new Date(year, month, day), "yyyy-MM-dd");
-    
+
     if (attendanceInfo) {
       setSelectedType(attendanceInfo.type);
       setConfirmDialog({
@@ -273,7 +246,7 @@ export function AttendanceGrid({
 
   const handleConfirm = () => {
     if (!confirmDialog) return;
-    
+
     if (confirmDialog.action === "add") {
       addAttendanceMutation.mutate({
         userId: confirmDialog.userId,
@@ -302,38 +275,24 @@ export function AttendanceGrid({
     });
   };
 
-  const companyName = company === "mirae_abm" ? "㈜미래에이비엠" : "㈜다원피엠씨";
-  const logoPath = company === "mirae_abm" ? miraeLogoPath : dawonLogoPath;
-
-  // Shift sort order: 주간(day), A, B, C, D
-  const shiftOrder: Record<string, number> = { day: 0, A: 1, B: 2, C: 3, D: 4 };
-  const shiftLabels: Record<string, string> = { day: "주간", A: "A조", B: "B조", C: "C조", D: "D조" };
-  
-  // Sort users by shift
-  const sortUsersByShift = (usersList: User[]) => {
-    return [...usersList].sort((a, b) => {
-      const orderA = shiftOrder[a.shift || "day"] ?? 99;
-      const orderB = shiftOrder[b.shift || "day"] ?? 99;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.name.localeCompare(b.name, "ko");
-    });
+  // Sort users by name
+  const sortUsers = (usersList: User[]) => {
+    return [...usersList].sort((a, b) => a.name.localeCompare(b.name, "ko"));
   };
 
-  // Calculate user count based on actual displayed users
   const siteUserCount = useMemo(() => {
-    const displayedUsers = sitesWithUsers.sitesData.reduce((acc, data) => acc + data.users.length, 0) 
+    return sitesWithUsers.sitesData.reduce((acc, data) => acc + data.users.length, 0)
       + sitesWithUsers.unassignedUsers.length;
-    return displayedUsers;
   }, [sitesWithUsers]);
 
-  const siteName = selectedSiteId 
+  const siteName = selectedSiteId
     ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
     : "전체 현장";
 
   const renderAttendanceCell = (user: User, day: number, userAttendance: Map<number, { type: string }>, siteId: string) => {
     const attendance = userAttendance.get(day);
     const display = attendance ? getAttendanceDisplay(attendance.type) : null;
-    
+
     if (isAdmin) {
       return (
         <td
@@ -352,10 +311,7 @@ export function AttendanceGrid({
     }
 
     return (
-      <td
-        key={day}
-        className="w-9 min-w-[36px] p-1 text-center"
-      >
+      <td key={day} className="w-9 min-w-[36px] p-1 text-center">
         {attendance && display ? (
           <span className={`font-bold ${display.color}`}>{display.text}</span>
         ) : (
@@ -367,21 +323,14 @@ export function AttendanceGrid({
 
   return (
     <>
-      <div className="rounded-lg border bg-card overflow-hidden" data-testid={`grid-attendance-${company}`}>
+      <div className="rounded-lg border bg-card overflow-hidden" data-testid="grid-attendance">
         <div className="p-4 border-b bg-muted/30">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-3">
-              <img 
-                src={logoPath} 
-                alt={companyName} 
-                className="h-8 object-contain"
-              />
-              <div>
-                <h3 className="font-semibold text-lg">{companyName} 근무자 출근기록부</h3>
-                <p className="text-sm text-muted-foreground">
-                  {format(selectedMonth, "yyyy년 M월", { locale: ko })}
-                </p>
-              </div>
+            <div>
+              <h3 className="font-semibold text-lg">근로자 출근기록부</h3>
+              <p className="text-sm text-muted-foreground">
+                {format(selectedMonth, "yyyy년 M월", { locale: ko })}
+              </p>
             </div>
             <div className="flex items-center gap-4 text-sm">
               <span className="text-muted-foreground">현장명: <strong className="text-foreground">{siteName}</strong></span>
@@ -413,10 +362,7 @@ export function AttendanceGrid({
                     현장 / 성명
                   </th>
                   {days.map((day) => (
-                    <th
-                      key={day}
-                      className="w-9 min-w-[36px] p-1 text-center font-medium border-b"
-                    >
+                    <th key={day} className="w-9 min-w-[36px] p-1 text-center font-medium border-b">
                       {day}
                     </th>
                   ))}
@@ -425,72 +371,159 @@ export function AttendanceGrid({
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={daysInMonth + 1}
-                      className="p-8 text-center text-muted-foreground"
-                    >
+                    <td colSpan={daysInMonth + 1} className="p-8 text-center text-muted-foreground">
                       등록된 근무자가 없습니다
                     </td>
                   </tr>
                 ) : (
                   <>
-                    {sitesWithUsers.sitesData.map(({ site, users: siteUsers }) => {
-                      const sortedUsers = sortUsersByShift(siteUsers);
-                      return (
-                        <Fragment key={`site-group-${site.id}`}>
-                          <tr className="bg-muted/30">
-                            <td
-                              colSpan={daysInMonth + 1}
-                              className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-primary border-b"
-                            >
-                              {site.name}
-                              <span className="text-muted-foreground font-normal ml-2">
-                                ({siteUsers.length}명)
-                              </span>
-                            </td>
-                          </tr>
-                          {sortedUsers.map((user) => {
-                            const userAttendance = attendanceMap.get(user.id) || new Map();
-                            const shiftLabel = shiftLabels[user.shift || "day"] || "주간";
-                            return (
-                              <tr key={user.id} className="hover-elevate border-b">
-                                <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
-                                  <span>{user.name}</span>
-                                  <span className="ml-1 text-xs text-muted-foreground">({shiftLabel})</span>
-                                </td>
-                                {days.map((day) => renderAttendanceCell(user, day, userAttendance, site.id))}
-                              </tr>
-                            );
-                          })}
-                        </Fragment>
-                      );
-                    })}
-                    {sitesWithUsers.unassignedUsers.length > 0 && (
+                    {selectedSiteId && selectedSiteId !== "all" ? (
+                      // Group by Department for single site
                       <>
-                        <tr className="bg-muted/30">
-                          <td
-                            colSpan={daysInMonth + 1}
-                            className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-muted-foreground border-b"
-                          >
-                            미배치
-                            <span className="font-normal ml-2">
-                              ({sitesWithUsers.unassignedUsers.length}명)
-                            </span>
-                          </td>
-                        </tr>
-                        {sortUsersByShift(sitesWithUsers.unassignedUsers).map((user) => {
-                          const userAttendance = attendanceMap.get(user.id) || new Map();
-                          const shiftLabel = shiftLabels[user.shift || "day"] || "주간";
+                        {(() => {
+                          const siteDepartments = props.departments?.filter(d => d.siteId === selectedSiteId).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) || [];
+                          // Users in this site
+                          const siteUsers = filteredUsers.filter(u => u.siteId === selectedSiteId);
+
+                          // Map departmentId -> users
+                          const deptUserMap = new Map<string, User[]>();
+                          const usersNoDept: User[] = [];
+
+                          siteUsers.forEach(u => {
+                            if (u.departmentId) {
+                              const existing = deptUserMap.get(u.departmentId) || [];
+                              existing.push(u);
+                              deptUserMap.set(u.departmentId, existing);
+                            } else {
+                              usersNoDept.push(u);
+                            }
+                          });
+
                           return (
-                            <tr key={user.id} className="hover-elevate border-b last:border-b-0">
-                              <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
-                                <span>{user.name}</span>
-                                <span className="ml-1 text-xs text-muted-foreground">({shiftLabel})</span>
-                              </td>
-                              {days.map((day) => renderAttendanceCell(user, day, userAttendance, user.siteId || ""))}
-                            </tr>
+                            <>
+                              {siteDepartments.map(dept => {
+                                const users = deptUserMap.get(dept.id) || [];
+                                if (users.length === 0) return null;
+                                const sortedUsers = sortUsers(users);
+                                return (
+                                  <Fragment key={`dept-group-${dept.id}`}>
+                                    <tr className="bg-muted/30">
+                                      <td
+                                        colSpan={daysInMonth + 1}
+                                        className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-primary border-b"
+                                      >
+                                        {dept.name}
+                                        <span className="text-muted-foreground font-normal ml-2">
+                                          ({users.length}명)
+                                        </span>
+                                      </td>
+                                    </tr>
+                                    {sortedUsers.map((user) => {
+                                      const userAttendance = attendanceMap.get(user.id) || new Map();
+                                      return (
+                                        <tr key={user.id} className="hover:bg-muted/20 border-b">
+                                          <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                                            <span>{user.name}</span>
+                                            {user.jobTitle && <span className="text-xs text-muted-foreground ml-1">({user.jobTitle})</span>}
+                                          </td>
+                                          {days.map((day) => renderAttendanceCell(user, day, userAttendance, user.siteId || ""))}
+                                        </tr>
+                                      );
+                                    })}
+                                  </Fragment>
+                                );
+                              })}
+
+                              {/* Users with no department */}
+                              {usersNoDept.length > 0 && (
+                                <>
+                                  <tr className="bg-muted/30">
+                                    <td
+                                      colSpan={daysInMonth + 1}
+                                      className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-muted-foreground border-b"
+                                    >
+                                      미배치 (부서 없음)
+                                      <span className="font-normal ml-2">
+                                        ({usersNoDept.length}명)
+                                      </span>
+                                    </td>
+                                  </tr>
+                                  {sortUsers(usersNoDept).map((user) => {
+                                    const userAttendance = attendanceMap.get(user.id) || new Map();
+                                    return (
+                                      <tr key={user.id} className="hover:bg-muted/20 border-b last:border-b-0">
+                                        <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                                          <span>{user.name}</span>
+                                          {user.jobTitle && <span className="text-xs text-muted-foreground ml-1">({user.jobTitle})</span>}
+                                        </td>
+                                        {days.map((day) => renderAttendanceCell(user, day, userAttendance, user.siteId || ""))}
+                                      </tr>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      // Group by Site (existing logic)
+                      <>
+                        {sitesWithUsers.sitesData.map(({ site, users: siteUsers }) => {
+                          const sortedUsers = sortUsers(siteUsers);
+                          return (
+                            <Fragment key={`site-group-${site.id}`}>
+                              <tr className="bg-muted/30">
+                                <td
+                                  colSpan={daysInMonth + 1}
+                                  className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-primary border-b"
+                                >
+                                  {site.name}
+                                  <span className="text-muted-foreground font-normal ml-2">
+                                    ({siteUsers.length}명)
+                                  </span>
+                                </td>
+                              </tr>
+                              {sortedUsers.map((user) => {
+                                const userAttendance = attendanceMap.get(user.id) || new Map();
+                                return (
+                                  <tr key={user.id} className="hover:bg-muted/20 border-b">
+                                    <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                                      <span>{user.name}</span>
+                                    </td>
+                                    {days.map((day) => renderAttendanceCell(user, day, userAttendance, site.id))}
+                                  </tr>
+                                );
+                              })}
+                            </Fragment>
                           );
                         })}
+                        {sitesWithUsers.unassignedUsers.length > 0 && (
+                          <>
+                            <tr className="bg-muted/30">
+                              <td
+                                colSpan={daysInMonth + 1}
+                                className="sticky left-0 z-10 bg-muted/30 p-2 font-semibold text-muted-foreground border-b"
+                              >
+                                미배치
+                                <span className="font-normal ml-2">
+                                  ({sitesWithUsers.unassignedUsers.length}명)
+                                </span>
+                              </td>
+                            </tr>
+                            {sortUsers(sitesWithUsers.unassignedUsers).map((user) => {
+                              const userAttendance = attendanceMap.get(user.id) || new Map();
+                              return (
+                                <tr key={user.id} className="hover:bg-muted/20 border-b last:border-b-0">
+                                  <td className="sticky left-0 z-10 bg-card w-32 min-w-[128px] p-2 pl-6 font-medium border-r">
+                                    <span>{user.name}</span>
+                                  </td>
+                                  {days.map((day) => renderAttendanceCell(user, day, userAttendance, user.siteId || ""))}
+                                </tr>
+                              );
+                            })}
+                          </>
+                        )}
                       </>
                     )}
                   </>
@@ -529,8 +562,8 @@ export function AttendanceGrid({
           </div>
           <DialogFooter className="flex-wrap gap-2">
             {confirmDialog?.action === "edit" && (
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 onClick={handleDelete}
                 disabled={removeAttendanceMutation.isPending}
                 data-testid="button-delete-attendance"
@@ -539,20 +572,20 @@ export function AttendanceGrid({
               </Button>
             )}
             <div className="flex gap-2 ml-auto">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setConfirmDialog(null)}
                 data-testid="button-cancel-attendance"
               >
                 취소
               </Button>
-              <Button 
+              <Button
                 onClick={handleConfirm}
                 disabled={addAttendanceMutation.isPending || updateAttendanceMutation.isPending}
                 data-testid="button-confirm-attendance"
               >
                 {addAttendanceMutation.isPending || updateAttendanceMutation.isPending
-                  ? "처리중..." 
+                  ? "처리중..."
                   : confirmDialog?.action === "add" ? "등록" : "수정"
                 }
               </Button>

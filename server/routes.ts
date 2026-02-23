@@ -1,40 +1,34 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertSiteSchema, insertAttendanceLogSchema, insertContactSchema, insertVacationRequestSchema, type VacationRequest } from "@shared/schema";
-import { sendEmail } from "./email";
-import { generateAttendancePdf } from "./pdf-generator";
-import { generateVacationPdf, generateVacationStatusPdf } from "./vacation-pdf-generator";
+import { insertUserSchema, insertSiteSchema, insertDepartmentSchema, insertAttendanceLogSchema, insertVacationRequestSchema, type VacationRequest, type User } from "@shared/schema";
 import { z } from "zod";
-import { startOfMonth, endOfMonth, format, differenceInDays, eachDayOfInterval, parseISO } from "date-fns";
-import { ko } from "date-fns/locale";
+import { startOfMonth, endOfMonth, format, eachDayOfInterval, parseISO } from "date-fns";
 import bcrypt from "bcryptjs";
-import { calculateAnnualLeave } from "@shared/leave-utils";
-import { getKSTNow, getKSTToday, getKSTYear } from "@shared/kst-utils";
+import { getKSTNow, getKSTToday } from "@shared/kst-utils";
+import { calculateAnnualLeave } from "@shared/vacation-calc";
+import * as XLSX from "xlsx";
 
 // Helper function to create attendance records for vacation days
 async function createVacationAttendanceRecords(vacation: VacationRequest): Promise<void> {
   const user = await storage.getUser(vacation.userId);
   if (!user || !user.siteId) return;
-  
-  // Map vacation type to attendance type
+
   const attendanceTypeMap: Record<string, "annual" | "half_day" | "sick" | "family_event" | "other"> = {
     annual: "annual",
-    half_day: "half_day", 
+    half_day: "half_day",
     sick: "sick",
     family_event: "family_event",
     other: "other",
   };
-  
+
   const attendanceType = attendanceTypeMap[vacation.vacationType] || "annual";
   const startDate = parseISO(vacation.startDate);
   const endDate = parseISO(vacation.endDate);
   const dates = eachDayOfInterval({ start: startDate, end: endDate });
-  
+
   for (const date of dates) {
     const dateStr = format(date, "yyyy-MM-dd");
-    
-    // Check if attendance log already exists for this date
     const existing = await storage.getAttendanceLogByUserAndDate(vacation.userId, dateStr);
     if (existing) {
       await storage.updateAttendanceLog(existing.id, {
@@ -55,11 +49,11 @@ async function createVacationAttendanceRecords(vacation: VacationRequest): Promi
   }
 }
 
-// Helper function to delete attendance records for vacation
 async function deleteVacationAttendanceRecords(vacationId: string): Promise<void> {
   await storage.deleteAttendanceLogsByVacationId(vacationId);
 }
 
+// Auth middleware
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ error: "로그인이 필요합니다" });
@@ -67,11 +61,21 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
+function requireHqAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ error: "로그인이 필요합니다" });
   }
-  if (req.session.role !== "admin") {
+  if (req.session.role !== "hq_admin") {
+    return res.status(403).json({ error: "본사 관리자 권한이 필요합니다" });
+  }
+  next();
+}
+
+function requireSiteManagerOrAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "로그인이 필요합니다" });
+  }
+  if (req.session.role !== "hq_admin" && req.session.role !== "site_manager") {
     return res.status(403).json({ error: "관리자 권한이 필요합니다" });
   }
   next();
@@ -81,23 +85,25 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  
+
+  // ============ AUTH ============
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { username, password } = req.body;
-      
+      const username = String(req.body.username || "").trim();
+      const password = String(req.body.password || "").trim();
+
       if (!username || !password) {
         return res.status(400).json({ error: "아이디와 비밀번호를 입력해주세요" });
       }
-      
-      // Get all active users with this username (allows duplicate names)
+
+      console.log(`Login attempt for username: '${username}'`);
       const matchingUsers = await storage.getUsersByUsername(username);
-      
+      console.log(`Found ${matchingUsers.length} matching users`);
+
       if (matchingUsers.length === 0) {
         return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
       }
-      
-      // Find the user with matching password
+
       let matchedUser = null;
       for (const user of matchingUsers) {
         const isValidPassword = await bcrypt.compare(password, user.password);
@@ -106,24 +112,33 @@ export async function registerRoutes(
           break;
         }
       }
-      
+
       if (!matchedUser) {
         return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
       }
-      
-      // Check if user's assigned site is still active (for guards)
-      if (matchedUser.role === "guard" && matchedUser.siteId) {
+
+      // Check if worker's assigned site is still active
+      if (matchedUser.role === "worker" && matchedUser.siteId) {
         const site = await storage.getSite(matchedUser.siteId);
         if (!site || !site.isActive) {
           return res.status(401).json({ error: "배정된 현장이 삭제되었습니다. 관리자에게 문의해주세요." });
         }
       }
-      
+
+      // Masquerade as worker if Site Manager logs in via Name (instead of Site ID)
+      // Condition: Role is site_manager AND input username does NOT match stored username (Site ID)
+      // This implies input username matched stored Name
+      let effectiveRole = matchedUser.role;
+      if (matchedUser.role === "site_manager" && matchedUser.username !== username) {
+        effectiveRole = "worker";
+      }
+
       req.session.userId = matchedUser.id;
-      req.session.role = matchedUser.role;
-      
+      req.session.role = effectiveRole;
+      req.session.siteId = matchedUser.siteId || undefined;
+
       const { password: _, ...userWithoutPassword } = matchedUser;
-      res.json({ user: userWithoutPassword });
+      res.json({ user: { ...userWithoutPassword, role: effectiveRole } });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ error: "로그인 처리 중 오류가 발생했습니다" });
@@ -146,38 +161,66 @@ export async function registerRoutes(
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
       }
       const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      // Use session role if available (for masquerading site managers as workers)
+      const effectiveRole = req.session.role || user.role;
+      res.json({ user: { ...userWithoutPassword, role: effectiveRole } });
     } catch (error) {
       console.error("Get current user error:", error);
       res.status(500).json({ error: "사용자 정보를 불러오는데 실패했습니다" });
     }
   });
 
-  app.get("/api/users", requireAdmin, async (req, res) => {
+  // ============ USERS ============
+  app.get("/api/users", requireSiteManagerOrAdmin, async (req, res) => {
     try {
-      const users = await storage.getUsers();
-      const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-      res.json(usersWithoutPasswords);
+      const currentUser = await storage.getUser(req.session.userId!);
+      let allUsers: User[];
+
+      if (currentUser?.role === "hq_admin") {
+        let queryCompany = req.query.company as string;
+        // Fallback
+        if (!queryCompany && req.url.includes("company=")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost");
+            queryCompany = urlObj.searchParams.get("company") || "";
+          } catch (e) { }
+        }
+
+        const targetCompany = queryCompany || currentUser.company;
+
+        if (targetCompany) {
+          const allSites = await storage.getSites();
+          const companySites = allSites.filter(s => s.company === targetCompany);
+          const companySiteIds = companySites.map(s => s.id);
+
+          const users = await storage.getUsers();
+          // Filter users who belong to company strictly
+          allUsers = users.filter(u => u.company === targetCompany);
+        } else {
+          allUsers = await storage.getUsers();
+        }
+      } else if (currentUser?.role === "site_manager" && currentUser.siteId) {
+        allUsers = await storage.getUsersBySite(currentUser.siteId);
+      } else {
+        allUsers = [];
+      }
+
+      const safeUsers = allUsers.map(u => {
+        const { password, ...userWithoutPassword } = u;
+        return userWithoutPassword;
+      });
+
+      res.json(safeUsers);
     } catch (error) {
       console.error("Get users error:", error);
       res.status(500).json({ error: "사용자 목록을 불러오는데 실패했습니다" });
     }
   });
 
-  app.post("/api/users", requireAdmin, async (req, res) => {
+  app.post("/api/users", requireHqAdmin, async (req, res) => {
     try {
       const validatedData = insertUserSchema.parse(req.body);
-      
-      // Check for same name + same phone at same site (true duplicate)
-      const existingUsers = await storage.getUsersByUsername(validatedData.username);
-      const last4Digits = validatedData.password; // password is last 4 digits of phone before hashing
-      for (const existing of existingUsers) {
-        const samePassword = await bcrypt.compare(last4Digits, existing.password);
-        if (samePassword && existing.siteId === validatedData.siteId) {
-          return res.status(400).json({ error: "같은 현장에 동일한 이름과 전화번호를 가진 근무자가 이미 등록되어 있습니다" });
-        }
-      }
-      
+
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
       const user = await storage.createUser({
         ...validatedData,
@@ -190,71 +233,347 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors[0].message });
       }
       console.error("Create user error:", error);
-      
-      // Check for unique constraint violation (duplicate username)
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes("unique") || errorMessage.includes("duplicate") || errorMessage.includes("23505")) {
-        return res.status(400).json({ error: "이미 동일한 이름의 근무자가 등록되어 있습니다. 다른 이름을 사용해주세요." });
-      }
-      
       res.status(500).json({ error: "사용자 생성 중 오류가 발생했습니다" });
     }
   });
 
-  app.patch("/api/users/:id", requireAdmin, async (req, res) => {
+  // Register site manager (현장대리인)
+  app.post("/api/site-managers", requireHqAdmin, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { name, phone, hireDate, siteId, isActive, shift } = req.body;
-      
-      const updateData: any = {};
-      if (name !== undefined) {
-        updateData.name = name;
-        updateData.username = name; // username = name for guards
+      const { name, phone, siteId } = req.body;
+      console.log(`Creating site manager: name=${name}, phone=${phone}, siteId=${siteId}`);
+
+      if (!name || !phone || !siteId) {
+        return res.status(400).json({ error: "이름, 전화번호, 현장을 모두 입력해주세요" });
       }
-      if (phone !== undefined) {
-        updateData.phone = phone;
-        // Update password to last 4 digits of phone
-        const last4Digits = phone.replace(/\D/g, "").slice(-4);
-        if (last4Digits.length === 4) {
-          updateData.password = await bcrypt.hash(last4Digits, 10);
-        }
+
+      const site = await storage.getSite(siteId);
+      if (!site) {
+        console.error(`Site not found: ${siteId}`);
+        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
       }
-      if (hireDate !== undefined) updateData.hireDate = hireDate;
-      if (siteId !== undefined) updateData.siteId = siteId;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (shift !== undefined) updateData.shift = shift;
-      
-      const user = await storage.updateUser(id, updateData);
-      if (!user) {
-        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+
+      // Username = site name, password = last 4 digits of phone
+      // Fix: Handle phone numbers with dashes or spaces correctly
+      const cleanPhone = phone.replace(/\D/g, "");
+      const last4Digits = cleanPhone.slice(-4);
+
+      if (last4Digits.length !== 4) {
+        console.error(`Invalid phone number format: ${phone}, extracted: ${last4Digits}`);
+        return res.status(400).json({ error: "전화번호 형식이 올바르지 않습니다 (4자리 이상 필요)" });
       }
+
+      console.log(`Generated password (last 4 digits): ${last4Digits}`);
+
+      const hashedPassword = await bcrypt.hash(last4Digits, 10);
+      const user = await storage.createUser({
+        username: site.name, // Site Manager uses Site Name as ID
+        password: hashedPassword,
+        name,
+        role: "site_manager",
+        phone,
+        siteId,
+        isActive: true,
+        company: site.company,
+      });
+
       const { password: _, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.status(201).json(userWithoutPassword);
     } catch (error) {
-      console.error("Update user error:", error);
-      res.status(500).json({ error: "사용자 수정 중 오류가 발생했습니다" });
+      console.error("Create site manager error:", error);
+      res.status(500).json({ error: "현장대리인 생성 중 오류가 발생했습니다" });
     }
   });
 
-  // Toggle active status
-  app.patch("/api/users/:id/toggle-active", requireAdmin, async (req, res) => {
+  // Register worker (근로자)
+  app.post("/api/workers", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const { name, phone, departmentId, hireDate, jobTitle } = req.body;
+      const currentUser = await storage.getUser(req.session.userId!);
+
+      if (!name || !phone) {
+        return res.status(400).json({ error: "이름과 전화번호를 입력해주세요" });
+      }
+
+      let siteId = req.body.siteId;
+      if (currentUser?.role === "site_manager") {
+        siteId = currentUser.siteId;
+      }
+
+      if (!siteId) {
+        return res.status(400).json({ error: "현장을 선택해주세요" });
+      }
+
+      const last4Digits = phone.replace(/\D/g, "").slice(-4);
+      if (last4Digits.length !== 4) {
+        return res.status(400).json({ error: "전화번호에서 4자리를 추출할 수 없습니다" });
+      }
+
+      const site = await storage.getSite(siteId);
+      if (!site) {
+        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
+      }
+
+      const hashedPassword = await bcrypt.hash(last4Digits, 10);
+      const user = await storage.createUser({
+        username: name,
+        password: hashedPassword,
+        name,
+        role: "worker",
+        phone,
+        siteId,
+        departmentId: departmentId || null,
+        jobTitle: jobTitle || null,
+        hireDate: hireDate || null,
+        isActive: true,
+        company: site.company,
+      });
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Create worker error:", error);
+      res.status(500).json({ error: "근로자 등록 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Excel template download
+  app.get("/api/workers/import-template", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      let deptList: string[] = [];
+
+      if (currentUser?.siteId) {
+        const depts = await storage.getDepartmentsBySite(currentUser.siteId);
+        deptList = depts.map(d => d.name);
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      // Main sheet with headers and example
+      const wsData = [
+        ["이름", "전화번호", "조직", "직책", "입사일"],
+        ["홍길동", 1012345678, deptList[0] || "경비", "경비원", new Date("2024-01-15")],
+        ["김철수", 1098765432, deptList[1] || "청소", "청소반장", new Date("2024-03-01")],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+      // Set column widths
+      ws["!cols"] = [
+        { wch: 15 }, // 이름
+        { wch: 18 }, // 전화번호
+        { wch: 15 }, // 조직
+        { wch: 15 }, // 직책
+        { wch: 15 }, // 입사일
+      ];
+
+      // Apply formatting to Phone (Col B, index 1) and Hire Date (Col E, index 4)
+      // Loop through first 50 rows (including header=0, data=1..2, empty=3..49)
+      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:E50");
+      range.e.r = Math.max(range.e.r, 50); // Extend range to row 50
+      ws["!ref"] = XLSX.utils.encode_range(range);
+
+      for (let R = 1; R <= 50; ++R) {
+        // Phone Column (B -> 1)
+        const phoneRef = XLSX.utils.encode_cell({ r: R, c: 1 });
+        if (!ws[phoneRef]) ws[phoneRef] = { t: 's', v: "" };
+        ws[phoneRef].z = "000-0000-0000";
+
+        // Hire Date Column (E -> 4)
+        const dateRef = XLSX.utils.encode_cell({ r: R, c: 4 });
+        if (!ws[dateRef]) ws[dateRef] = { t: 's', v: "" };
+        ws[dateRef].z = "yyyy-mm-dd";
+      }
+
+      XLSX.utils.book_append_sheet(wb, ws, "근로자등록");
+
+      // Departments reference sheet
+      if (deptList.length > 0) {
+        const deptWsData = [["현장 조직 목록"], ...deptList.map(d => [d])];
+        const deptWs = XLSX.utils.aoa_to_sheet(deptWsData);
+        XLSX.utils.book_append_sheet(wb, deptWs, "조직목록");
+      }
+
+      const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", "attachment; filename=worker_import_template.xlsx");
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error("Template download error:", error);
+      res.status(500).json({ error: "양식 다운로드 중 오류가 발생했습니다" });
+    }
+  });
+
+  // Excel bulk import
+  app.post("/api/workers/bulk-import", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+
+      let siteId = req.body.siteId;
+      if (currentUser?.role === "site_manager") {
+        siteId = currentUser.siteId;
+      }
+
+      if (!siteId) {
+        return res.status(400).json({ error: "현장이 지정되지 않았습니다" });
+      }
+
+
+
+      // Get site info once
+      const site = await storage.getSite(siteId);
+      if (!site) {
+        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
+      }
+
+      const { data } = req.body; // Array of { name, phone, department, jobTitle, hireDate }
+      if (!Array.isArray(data) || data.length === 0) {
+        return res.status(400).json({ error: "등록할 근로자 데이터가 없습니다" });
+      }
+
+      // Get departments for this site
+      const departments = await storage.getDepartmentsBySite(siteId);
+      const deptMap = new Map(departments.map(d => [d.name, d.id]));
+
+      const results = { success: 0, failed: 0, errors: [] as string[] };
+
+      for (let i = 0; i < data.length; i++) {
+        try {
+          const row = data[i];
+          const name = String(row.name || "").trim();
+          const phone = String(row.phone || "").trim();
+          const deptName = String(row.department || "").trim();
+          const jobTitle = row.jobTitle ? String(row.jobTitle).trim() : null;
+          const hireDate = row.hireDate ? String(row.hireDate).trim() : null;
+
+          if (!name || !phone) {
+            results.failed++;
+            results.errors.push(`${i + 1}행: 이름 또는 전화번호가 비어있습니다`);
+            continue;
+          }
+
+          const last4Digits = phone.replace(/\D/g, "").slice(-4);
+          if (last4Digits.length !== 4) {
+            results.failed++;
+            results.errors.push(`${i + 1}행: 전화번호가 올바르지 않습니다 (${name})`);
+            continue;
+          }
+
+          const departmentId = deptMap.get(deptName) || null;
+
+          const hashedPassword = await bcrypt.hash(last4Digits, 10);
+          await storage.createUser({
+            username: name,
+            password: hashedPassword,
+            name,
+            role: "worker",
+            phone,
+            siteId,
+            departmentId,
+            jobTitle,
+            hireDate,
+            isActive: true,
+            company: site.company,
+          });
+
+          results.success++;
+        } catch (error) {
+          results.failed++;
+          results.errors.push(`${i + 1}행: 등록 실패 - ${error instanceof Error ? error.message : "알 수 없는 오류"}`);
+        }
+      }
+
+      res.json({
+        message: `${results.success}명 등록 완료, ${results.failed}명 실패`,
+        ...results,
+      });
+    } catch (error) {
+      console.error("Bulk import error:", error);
+      res.status(500).json({ error: "일괄 등록 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.patch("/api/users/:id/toggle-active", requireSiteManagerOrAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const user = await storage.getUser(id);
       if (!user) {
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
       }
+
       const updated = await storage.updateUser(id, { isActive: !user.isActive });
-      const { password: _, ...userWithoutPassword } = updated!;
+      const { password: _, ...userWithoutPassword } = updated as any; // Type assertion since updateUser return might not enforce strict schema here
       res.json(userWithoutPassword);
     } catch (error) {
-      console.error("Toggle user active error:", error);
+      console.error("Toggle active error:", error);
       res.status(500).json({ error: "상태 변경 중 오류가 발생했습니다" });
     }
   });
 
-  // Hard delete - removes all data including attendance logs
-  app.delete("/api/users/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/users/:id", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, phone, hireDate, siteId, departmentId, isActive, jobTitle } = req.body;
+
+      const user = await storage.getUser(id);
+      if (!user) return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
+
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (phone !== undefined) {
+        updateData.phone = phone;
+        const last4Digits = phone.replace(/\D/g, "").slice(-4);
+        if (last4Digits.length === 4) {
+          updateData.password = await bcrypt.hash(last4Digits, 10);
+        }
+      }
+
+      if (hireDate !== undefined) {
+        updateData.hireDate = hireDate === "" ? null : hireDate;
+      }
+      if (siteId !== undefined) {
+        updateData.siteId = siteId;
+        // If site changes, update company to match new site
+        const site = await storage.getSite(siteId);
+        if (site) {
+          updateData.company = site.company;
+          // Site managers always use site name as username
+          if (user.role === "site_manager" || req.body.role === "site_manager") {
+            updateData.username = site.name;
+          }
+        }
+      }
+      // Ensure site managers keep site name as username (even without site change)
+      if ((user.role === "site_manager" || req.body.role === "site_manager") && !updateData.username) {
+        const currentSiteId = siteId || user.siteId;
+        if (currentSiteId) {
+          const site = await storage.getSite(currentSiteId);
+          if (site) {
+            updateData.username = site.name;
+          }
+        }
+      }
+      if (departmentId !== undefined) {
+        updateData.departmentId = departmentId === "none" || departmentId === "" ? null : departmentId;
+      }
+      if (jobTitle !== undefined) {
+        updateData.jobTitle = jobTitle === "" ? null : jobTitle;
+      }
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (req.body.role !== undefined) updateData.role = req.body.role;
+
+      console.log("Updating user:", id, updateData);
+      const updatedUser = await storage.updateUser(id, updateData);
+      const { password: _, ...userWithoutPassword } = updatedUser as any;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Update user error full object:", JSON.stringify(error, null, 2));
+      res.status(500).json({ error: "사용자 수정 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.delete("/api/users/:id", requireSiteManagerOrAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const user = await storage.getUser(id);
@@ -269,9 +588,41 @@ export async function registerRoutes(
     }
   });
 
+  // ============ SITES ============
   app.get("/api/sites", requireAuth, async (req, res) => {
     try {
-      const sites = await storage.getSites();
+      const currentUser = await storage.getUser(req.session.userId!);
+      let sites = await storage.getSites();
+
+      if (currentUser?.role === "hq_admin") {
+        // Allow querying by specific company if provided, otherwise default to user's company
+        let queryCompany = req.query.company as string;
+
+        // Fallback: manually parse URL if req.query is empty (belt and suspenders)
+        if (!queryCompany && req.url.includes("company=")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost");
+            queryCompany = urlObj.searchParams.get("company") || "";
+          } catch (e) {
+            console.error("Manual URL parsing failed", e);
+          }
+        }
+
+        const targetCompany = queryCompany || currentUser.company;
+
+        // Special Case: 'dawon' admin should ONLY see 'dawon_pmc' sites
+        // 'admin' (mirae_abm) can see everything or switch context
+        if (currentUser.username !== "admin" && currentUser.username !== "관리자" && currentUser.company) {
+          sites = sites.filter(s => s.company === currentUser.company);
+        } else if (targetCompany) {
+          sites = sites.filter(s => s.company === targetCompany);
+        }
+      } else if ((currentUser?.role === "site_manager" || currentUser?.role === "worker") && currentUser.siteId) {
+        sites = sites.filter(s => s.id === currentUser.siteId);
+      } else {
+        sites = [];
+      }
+
       res.json(sites);
     } catch (error) {
       console.error("Get sites error:", error);
@@ -279,41 +630,106 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sites", requireAdmin, async (req, res) => {
+
+  app.post("/api/sites", requireHqAdmin, async (req, res) => {
     try {
-      console.log("Creating site with data:", req.body);
-      const validatedData = insertSiteSchema.parse(req.body);
-      console.log("Validated data:", validatedData);
-      const site = await storage.createSite(validatedData);
-      console.log("Site created successfully:", site);
+      const { name, address, contractStartDate, contractEndDate, departments: deptNames, company } = req.body;
+      const currentUser = await storage.getUser(req.session.userId!);
+
+      if (!name) {
+        return res.status(400).json({ error: "현장명을 입력해주세요" });
+      }
+
+      // If company is provided, use it (allow HQ admin to create for any company).
+      // Otherwise default to admin's company or mirae_abm.
+      const siteCompany = company || currentUser?.company || "mirae_abm";
+
+      const site = await storage.createSite({
+        name,
+        address: address || null,
+        contractStartDate: contractStartDate || null,
+        contractEndDate: contractEndDate || null,
+        isActive: true,
+        company: siteCompany,
+        managerEmail: req.body.managerEmail || null,
+      });
+
+      // Create departments if provided
+      if (Array.isArray(deptNames) && deptNames.length > 0) {
+        for (let i = 0; i < deptNames.length; i++) {
+          const deptName = String(deptNames[i]).trim();
+          if (deptName) {
+            await storage.createDepartment({
+              siteId: site.id,
+              name: deptName,
+              sortOrder: i,
+              isActive: true,
+            });
+          }
+        }
+      }
+
       res.status(201).json(site);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        console.error("Validation error:", error.errors);
-        return res.status(400).json({ error: error.errors[0].message });
-      }
       console.error("Create site error:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      res.status(500).json({ error: "현장 생성 중 오류가 발생했습니다", details: errorMessage });
+      res.status(500).json({ error: "현장 생성 중 오류가 발생했습니다" });
     }
   });
 
-  app.patch("/api/sites/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/sites/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, address, company, contractStartDate, contractEndDate } = req.body;
-      
+      const { name, address, contractStartDate, contractEndDate, company, isActive } = req.body;
+      const currentUser = await storage.getUser(req.session.userId!);
+
+      if (!currentUser) return res.sendStatus(401);
+
+      // Permission check
+      const isHqAdmin = currentUser.role === "hq_admin";
+      const isSiteManager = currentUser.role === "site_manager";
+
+      // Site Managers can only update their own site
+      if (isSiteManager && currentUser.siteId !== id) {
+        return res.status(403).json({ error: "권한이 없습니다" });
+      }
+
+      // Workers cannot update sites
+      if (currentUser.role === "worker") {
+        return res.status(403).json({ error: "권한이 없습니다" });
+      }
+
       const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
-      if (address !== undefined) updateData.address = address;
-      if (company !== undefined) updateData.company = company;
-      if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate;
-      if (contractEndDate !== undefined) updateData.contractEndDate = contractEndDate;
-      
+
+      // HQ Admin can update everything
+      if (isHqAdmin) {
+        if (name !== undefined) updateData.name = name;
+        if (address !== undefined) updateData.address = address;
+        if (contractStartDate !== undefined) updateData.contractStartDate = contractStartDate;
+        if (contractEndDate !== undefined) updateData.contractEndDate = contractEndDate;
+        if (company !== undefined) updateData.company = company;
+        if (isActive !== undefined) updateData.isActive = isActive;
+      }
+
+      // Both HQ Admin and Site Manager can update managerEmail
+      if (req.body.managerEmail !== undefined) {
+        updateData.managerEmail = req.body.managerEmail;
+      }
+
       const site = await storage.updateSite(id, updateData);
       if (!site) {
         return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
       }
+
+      // If site name changed, update all site managers' usernames
+      // Only HQ Admin can change name, so this logic is safe/conditional
+      if (isHqAdmin && name !== undefined) {
+        const siteUsers = await storage.getUsersBySite(id);
+        const siteManagers = siteUsers.filter(u => u.role === "site_manager");
+        for (const manager of siteManagers) {
+          await storage.updateUser(manager.id, { username: name });
+        }
+      }
+
       res.json(site);
     } catch (error) {
       console.error("Update site error:", error);
@@ -321,7 +737,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/sites/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/sites/:id", requireHqAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       await storage.deleteSite(id);
@@ -332,13 +748,114 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/attendance", requireAdmin, async (req, res) => {
+
+  // ============ DEPARTMENTS ============
+  app.get("/api/departments/:siteId", requireAuth, async (req, res) => {
     try {
-      const { month } = req.query;
-      
+      const { siteId } = req.params;
+      const depts = await storage.getDepartmentsBySite(siteId);
+      res.json(depts);
+    } catch (error) {
+      console.error("Get deps error:", error);
+      res.status(500).json({ error: "부서 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  // Departments
+  app.get("/api/departments", requireAuth, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      let departments = await storage.getAllDepartments();
+
+      if (currentUser?.role === "hq_admin") {
+        // Allow querying by specific company if provided, otherwise default to user's company
+        let queryCompany = req.query.company as string;
+        // Fallback
+        if (!queryCompany && req.url.includes("company=")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost");
+            queryCompany = urlObj.searchParams.get("company") || "";
+          } catch (e) { }
+        }
+
+        const targetCompany = queryCompany || currentUser.company;
+
+        if (targetCompany) {
+          const sites = await storage.getSites();
+          const companySites = sites.filter(s => s.company === targetCompany);
+          const companySiteIds = companySites.map(s => s.id);
+          departments = departments.filter(d => companySiteIds.includes(d.siteId));
+        }
+      } else if (currentUser?.role === "site_manager" && currentUser.siteId) {
+        departments = departments.filter(d => d.siteId === currentUser.siteId);
+      }
+
+      res.json(departments);
+    } catch (error) {
+      console.error("Get all departments error:", error);
+      res.status(500).json({ error: "전체 부서 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  app.post("/api/departments/site/:siteId", requireHqAdmin, async (req, res) => {
+    try {
+      const { siteId, name, sortOrder } = req.body;
+      if (!siteId || !name) {
+        return res.status(400).json({ error: "현장과 조직명을 입력해주세요" });
+      }
+
+      const dept = await storage.createDepartment({
+        siteId,
+        name,
+        sortOrder: sortOrder || 0,
+        isActive: true,
+      });
+      res.status(201).json(dept);
+    } catch (error) {
+      console.error("Create department error:", error);
+      res.status(500).json({ error: "조직 생성 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.patch("/api/departments/:id", requireHqAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, sortOrder } = req.body;
+
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
+
+      const dept = await storage.updateDepartment(id, updateData);
+      if (!dept) {
+        return res.status(404).json({ error: "조직을 찾을 수 없습니다" });
+      }
+      res.json(dept);
+    } catch (error) {
+      console.error("Update department error:", error);
+      res.status(500).json({ error: "조직 수정 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.delete("/api/departments/:id", requireHqAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteDepartment(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete department error:", error);
+      res.status(500).json({ error: "조직 삭제 중 오류가 발생했습니다" });
+    }
+  });
+
+  // ============ ATTENDANCE ============
+  app.get("/api/attendance", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const { month, siteId } = req.query;
+
       let startDate: string;
       let endDate: string;
-      
+
       if (month && typeof month === "string") {
         const [year, monthNum] = month.split("-").map(Number);
         const start = new Date(year, monthNum - 1, 1);
@@ -352,8 +869,42 @@ export async function registerRoutes(
         startDate = format(start, "yyyy-MM-dd");
         endDate = format(end, "yyyy-MM-dd");
       }
-      
-      const logs = await storage.getAttendanceLogs(startDate, endDate);
+
+      const currentUser = await storage.getUser(req.session.userId!);
+      let logs;
+
+      if (siteId && typeof siteId === "string") {
+        logs = await storage.getAttendanceLogsBySite(siteId, startDate, endDate);
+      } else if (currentUser?.role === "site_manager" && currentUser.siteId) {
+        logs = await storage.getAttendanceLogsBySite(currentUser.siteId, startDate, endDate);
+      } else if (currentUser?.role === "hq_admin") {
+        let queryCompany = req.query.company as string;
+        // Fallback
+        if (!queryCompany && req.url.includes("company=")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost");
+            queryCompany = urlObj.searchParams.get("company") || "";
+          } catch (e) { }
+        }
+
+        const targetCompany = queryCompany || currentUser.company;
+
+        // If filtering by company, we need to get sites for that company first
+        if (targetCompany) {
+          const sites = await storage.getSites(); // Get all sites
+          const companySites = sites.filter(s => s.company === targetCompany);
+          const companySiteIds = companySites.map(s => s.id);
+
+          // Get all logs for the period (optimization: could add DB filter)
+          const allLogs = await storage.getAttendanceLogs(startDate, endDate);
+          logs = allLogs.filter(log => companySiteIds.includes(log.siteId));
+        } else {
+          logs = await storage.getAttendanceLogs(startDate, endDate);
+        }
+      } else {
+        logs = await storage.getAttendanceLogs(startDate, endDate);
+      }
+
       res.json(logs);
     } catch (error) {
       console.error("Get attendance error:", error);
@@ -364,11 +915,11 @@ export async function registerRoutes(
   app.get("/api/attendance/today/:userId", requireAuth, async (req, res) => {
     try {
       const { userId } = req.params;
-      
-      if (req.session.role !== "admin" && req.session.userId !== userId) {
+
+      if (req.session.role === "worker" && req.session.userId !== userId) {
         return res.status(403).json({ error: "접근 권한이 없습니다" });
       }
-      
+
       const today = getKSTToday();
       const log = await storage.getTodayAttendanceLog(userId, today);
       res.json(log || null);
@@ -382,14 +933,14 @@ export async function registerRoutes(
     try {
       const { userId } = req.params;
       const { month } = req.query;
-      
-      if (req.session.role !== "admin" && req.session.userId !== userId) {
+
+      if (req.session.role === "worker" && req.session.userId !== userId) {
         return res.status(403).json({ error: "접근 권한이 없습니다" });
       }
-      
+
       let startDate: string;
       let endDate: string;
-      
+
       if (month && typeof month === "string") {
         const [year, monthNum] = month.split("-").map(Number);
         const start = new Date(year, monthNum - 1, 1);
@@ -403,7 +954,7 @@ export async function registerRoutes(
         startDate = format(start, "yyyy-MM-dd");
         endDate = format(end, "yyyy-MM-dd");
       }
-      
+
       const logs = await storage.getAttendanceLogsByUser(userId, startDate, endDate);
       res.json(logs);
     } catch (error) {
@@ -416,35 +967,67 @@ export async function registerRoutes(
     try {
       const { siteId, checkInDate, latitude, longitude } = req.body;
       const userId = req.session.userId!;
-      
+
       if (!siteId || !checkInDate) {
         return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
       }
-      
+
       const site = await storage.getSite(siteId);
       if (!site) {
         return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
       }
-      
-      // Server-side validation: Check if guard's assigned site matches QR site
+
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
       }
-      
+
       if (!user.siteId) {
         return res.status(400).json({ error: "배정된 현장이 없습니다. 관리자에게 문의하세요." });
       }
-      
+
       if (user.siteId !== siteId) {
+        console.log(`[CheckIn Mismatch] User: ${user.name} (${userId}), Role: ${user.role}`);
+        console.log(`[CheckIn Mismatch] User SiteID: '${user.siteId}'`);
+        console.log(`[CheckIn Mismatch] Req SiteID:  '${siteId}'`);
+        console.log(`[CheckIn Mismatch] Site Name:   '${site.name}'`);
+
+        // Check if there is ANOTHER account for this person (Same Name, Same Phone) that matches the siteId
+        const alternativeUser = await storage.findUserByNamePhoneAndSite(user.name, user.phone, siteId);
+
+        if (alternativeUser) {
+          console.log(`[CheckIn Switch] Found alternative user account ${alternativeUser.id} for site ${site.name}. Switching session.`);
+
+          // Switch Session
+          req.session.userId = alternativeUser.id;
+          req.session.role = "worker"; // Keep them as worker (masquerading)
+
+          // Proceed with logic using alternativeUser
+          const existingLog = await storage.getTodayAttendanceLog(alternativeUser.id, checkInDate);
+          if (existingLog) {
+            return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+          }
+
+          const log = await storage.createAttendanceLog({
+            userId: alternativeUser.id,
+            siteId,
+            checkInDate,
+            latitude: latitude || null,
+            longitude: longitude || null,
+            source: "qr",
+          });
+
+          return res.status(201).json({ ...log, siteName: site.name });
+        }
+
         return res.status(400).json({ error: `본인 현장(${site.name})이 아닌 다른 현장의 QR 코드입니다.` });
       }
-      
+
       const existingLog = await storage.getTodayAttendanceLog(userId, checkInDate);
       if (existingLog) {
         return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
       }
-      
+
       const log = await storage.createAttendanceLog({
         userId,
         siteId,
@@ -453,7 +1036,7 @@ export async function registerRoutes(
         longitude: longitude || null,
         source: "qr",
       });
-      
+
       res.status(201).json({ ...log, siteName: site.name });
     } catch (error) {
       console.error("Check-in error:", error);
@@ -463,10 +1046,10 @@ export async function registerRoutes(
 
   const validAttendanceTypes = ["normal", "annual", "half_day", "sick", "family_event", "other"] as const;
 
-  app.post("/api/admin/attendance", requireAdmin, async (req, res) => {
+  app.post("/api/admin/attendance", requireSiteManagerOrAdmin, async (req, res) => {
     try {
       const { userId, siteId, checkInDate, attendanceType } = req.body;
-      
+
       if (!userId || !siteId || !checkInDate) {
         return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
       }
@@ -475,22 +1058,12 @@ export async function registerRoutes(
       if (!validAttendanceTypes.includes(resolvedType)) {
         return res.status(400).json({ error: "유효하지 않은 출근/휴가 유형입니다" });
       }
-      
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
-      }
-      
-      const site = await storage.getSite(siteId);
-      if (!site) {
-        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
-      }
-      
+
       const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
       if (existingLog) {
         return res.status(400).json({ error: "해당 날짜에 이미 출근 기록이 있습니다" });
       }
-      
+
       const log = await storage.createAttendanceLog({
         userId,
         siteId,
@@ -500,7 +1073,7 @@ export async function registerRoutes(
         attendanceType: resolvedType,
         source: "manual",
       });
-      
+
       res.status(201).json(log);
     } catch (error) {
       console.error("Admin create attendance error:", error);
@@ -508,10 +1081,10 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/attendance", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/attendance", requireSiteManagerOrAdmin, async (req, res) => {
     try {
       const { userId, checkInDate, attendanceType } = req.body;
-      
+
       if (!userId || !checkInDate || !attendanceType) {
         return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
       }
@@ -519,12 +1092,12 @@ export async function registerRoutes(
       if (!validAttendanceTypes.includes(attendanceType)) {
         return res.status(400).json({ error: "유효하지 않은 출근/휴가 유형입니다" });
       }
-      
+
       const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
       if (!existingLog) {
         return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
       }
-      
+
       const updateData: any = { attendanceType };
       if (existingLog.source !== "vacation") {
         updateData.source = "manual";
@@ -537,21 +1110,20 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/attendance", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/attendance", requireSiteManagerOrAdmin, async (req, res) => {
     try {
       const { userId, checkInDate } = req.body;
-      
+
       if (!userId || !checkInDate) {
         return res.status(400).json({ error: "필수 정보가 누락되었습니다" });
       }
-      
+
       const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
       if (!existingLog) {
         return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
       }
-      
+
       await storage.deleteAttendanceLogByUserAndDate(userId, checkInDate);
-      
       res.status(204).send();
     } catch (error) {
       console.error("Admin delete attendance error:", error);
@@ -559,6 +1131,251 @@ export async function registerRoutes(
     }
   });
 
+  // ============ VACATION BALANCE ============
+  app.get("/api/vacation-balance", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      if (!currentUser) return res.status(401).json({ error: "인증 필요" });
+
+      let siteId: string | undefined;
+
+      if (currentUser.role === "hq_admin") {
+        siteId = req.query.siteId as string;
+        if (!siteId) return res.status(400).json({ error: "현장을 선택해주세요" });
+      } else if (currentUser.role === "site_manager") {
+        siteId = currentUser.siteId || undefined;
+        if (!siteId) return res.status(400).json({ error: "배정된 현장이 없습니다" });
+      }
+
+      const queryYear = parseInt(req.query.year as string) || new Date().getFullYear();
+
+      // Get site info
+      const sites = await storage.getSites();
+      const site = sites.find(s => s.id === siteId);
+      const siteName = site?.name || "-";
+
+      // Get workers at this site (workers + site managers are both employees)
+      const allUsers = await storage.getUsers();
+      const siteWorkers = allUsers.filter(u => u.siteId === siteId && u.isActive && (u.role === "worker" || u.role === "site_manager"));
+
+
+      // Get all vacation requests for these workers
+      const allRequests = await storage.getVacationRequests();
+      const today = getKSTToday();
+
+      const balances = siteWorkers.map(worker => {
+        const entitlement = calculateAnnualLeave(worker.hireDate || today, today);
+
+        // Filter approved requests within the current entitlement period
+        const approvedRequests = allRequests.filter(r => {
+          if (r.userId !== worker.id || r.status !== "approved") return false;
+          if (entitlement.periodStart && entitlement.periodEnd) {
+            return r.startDate >= entitlement.periodStart && r.startDate < entitlement.periodEnd;
+          }
+          return true;
+        });
+
+        // Filter pending requests
+        const pendingRequests = allRequests.filter(r =>
+          r.userId === worker.id && r.status === "pending"
+        );
+
+        const usedDays = approvedRequests.reduce((sum, r) => sum + (r.days || 0), 0);
+        const pendingDays = pendingRequests.reduce((sum, r) => sum + (r.days || 0), 0);
+        const remainingDays = entitlement.totalDays - usedDays;
+
+        // Vacation history: list of approved vacation date ranges
+        const vacationHistory = approvedRequests.map(r => ({
+          id: r.id,
+          startDate: r.startDate,
+          endDate: r.endDate,
+          type: r.vacationType,
+          days: r.days,
+          reason: r.reason,
+        }));
+
+        return {
+          userId: worker.id,
+          name: worker.name,
+          siteName,
+          jobTitle: worker.jobTitle || "-",
+          hireDate: worker.hireDate || null,
+          yearsWorked: entitlement.yearsWorked,
+          monthsWorked: entitlement.monthsWorked,
+          totalEntitlement: entitlement.totalDays,
+          usedDays,
+          remainingDays,
+          pendingDays,
+          pendingCount: pendingRequests.length,
+          vacationHistory,
+          description: entitlement.description,
+          periodStart: entitlement.periodStart,
+          periodEnd: entitlement.periodEnd,
+        };
+      });
+
+      res.json(balances);
+    } catch (error) {
+      console.error("Get vacation balance error:", error);
+      res.status(500).json({ error: "휴가 현황을 불러오는데 실패했습니다" });
+    }
+  });
+
+  // ============ VACATION ============
+  app.get("/api/vacation-requests", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const currentUser = await storage.getUser(req.session.userId!);
+      let requests: VacationRequest[];
+
+      if (currentUser?.role === "hq_admin") {
+        let queryCompany = req.query.company as string;
+        const querySiteId = req.query.siteId as string;
+        // Fallback
+        if (!queryCompany && req.url.includes("company=")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost");
+            queryCompany = urlObj.searchParams.get("company") || "";
+          } catch (e) { }
+        }
+        const targetCompany = queryCompany || currentUser.company;
+
+        requests = await storage.getVacationRequests();
+
+        if (targetCompany) {
+          const users = await storage.getUsers();
+          let filteredUsers = users.filter(u => u.company === targetCompany);
+          // If siteId is specified, further filter by site
+          if (querySiteId) {
+            filteredUsers = filteredUsers.filter(u => u.siteId === querySiteId);
+          }
+          const filteredUserIds = filteredUsers.map(u => u.id);
+          requests = requests.filter(r => filteredUserIds.includes(r.userId));
+        }
+      } else if (currentUser?.role === "site_manager" && currentUser.siteId) {
+        requests = await storage.getVacationRequestsBySite(currentUser.siteId);
+      } else {
+        requests = [];
+      }
+
+      res.json(requests);
+    } catch (error) {
+      console.error("Get vacation requests error:", error);
+      res.status(500).json({ error: "휴가 신청 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  app.get("/api/vacation-requests/user/:userId", requireAuth, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      if (req.session.role === "worker" && req.session.userId !== userId) {
+        return res.status(403).json({ error: "접근 권한이 없습니다" });
+      }
+      const requests = await storage.getVacationRequestsByUser(userId);
+      res.json(requests);
+    } catch (error) {
+      console.error("Get user vacation requests error:", error);
+      res.status(500).json({ error: "휴가 신청 목록을 불러오는데 실패했습니다" });
+    }
+  });
+
+  app.post("/api/vacation-requests", requireAuth, async (req, res) => {
+    try {
+      const validatedData = insertVacationRequestSchema.parse(req.body);
+      const request = await storage.createVacationRequest(validatedData);
+      res.status(201).json(request);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Create vacation request error:", error);
+      res.status(500).json({ error: "휴가 신청 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.patch("/api/vacation-requests/:id", requireSiteManagerOrAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      // Allow full updates (status, dates, type, reason)
+      const { status, rejectionReason, startDate, endDate, vacationType, reason, days } = req.body;
+
+      const updateData: any = {};
+
+      // Status update logic
+      if (status) {
+        updateData.status = status;
+        if (status === "approved" || status === "rejected") {
+          updateData.respondedBy = req.session.userId;
+          updateData.respondedAt = new Date();
+        }
+      }
+
+      if (rejectionReason !== undefined) updateData.rejectionReason = rejectionReason;
+
+      // Edit fields logic
+      if (startDate) updateData.startDate = startDate;
+      if (endDate) updateData.endDate = endDate;
+      if (vacationType) updateData.vacationType = vacationType;
+      if (reason !== undefined) updateData.reason = reason;
+      if (days !== undefined) updateData.days = days;
+
+      // Get existing request to check previous status/dates
+      const existingRequest = await storage.getVacationRequest(id);
+
+      const request = await storage.updateVacationRequest(id, updateData);
+      if (!request) {
+        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
+      }
+
+      // Attendance Log Sync Logic
+      // If approved (or remaining approved after edit), sync attendance
+      const finalStatus = status || existingRequest?.status;
+
+      if (finalStatus === "approved") {
+        // If it was already confirmed, we might need to recreate logs if dates changed
+        // Safest approach: Delete existing logs for this request, then create new ones
+        await deleteVacationAttendanceRecords(id);
+        await createVacationAttendanceRecords(request);
+      } else if (finalStatus === "rejected") {
+        await deleteVacationAttendanceRecords(id);
+      }
+      // If pending, do nothing (or delete if it was previously approved? - "pending" usually means reset? But users rarely revert Approved to Pending. If they do, logs should be removed.)
+      else if (finalStatus === "pending") {
+        await deleteVacationAttendanceRecords(id);
+      }
+
+      res.json(request);
+    } catch (error) {
+      console.error("Update vacation request error:", error);
+      res.status(500).json({ error: "휴가 처리 중 오류가 발생했습니다" });
+    }
+  });
+
+  app.delete("/api/vacation-requests/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const request = await storage.getVacationRequest(id);
+      if (!request) return res.status(404).json({ error: "요청을 찾을 수 없습니다" });
+
+      if (req.session.role !== "hq_admin" && req.session.role !== "site_manager") {
+        if (request.userId !== req.session.userId) {
+          return res.status(403).json({ error: "삭제 권한이 없습니다" });
+        }
+        if (request.status !== "pending") {
+          return res.status(400).json({ error: "대기 중인 요청만 삭제할 수 있습니다" });
+        }
+      }
+
+      await deleteVacationAttendanceRecords(id);
+      await storage.deleteVacationRequest(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete vacation request error:", error);
+      res.status(500).json({ error: "휴가 삭제 중 오류가 발생했습니다" });
+    }
+  });
+
+  // ============ SEED DATA ============
   app.post("/api/seed", async (req, res) => {
     try {
       const existingUsers = await storage.getUsers();
@@ -567,110 +1384,21 @@ export async function registerRoutes(
       }
 
       const adminPassword = await bcrypt.hash("admin123", 10);
-      const guardPassword = await bcrypt.hash("guard123", 10);
 
       const admin = await storage.createUser({
         username: "관리자",
         password: adminPassword,
         name: "관리자",
-        role: "admin",
-        company: "mirae_abm",
-        phone: "010-1234-5678",
+        role: "hq_admin",
+        phone: "010-0000-0000",
         isActive: true,
-      });
-
-      const guard1 = await storage.createUser({
-        username: "guard1",
-        password: guardPassword,
-        name: "김경비",
-        role: "guard",
-        company: "mirae_abm",
-        phone: "010-1111-2222",
-        isActive: true,
-      });
-
-      const guard2 = await storage.createUser({
-        username: "guard2",
-        password: guardPassword,
-        name: "이경비",
-        role: "guard",
-        company: "mirae_abm",
-        phone: "010-3333-4444",
-        isActive: true,
-      });
-
-      const guard3 = await storage.createUser({
-        username: "guard3",
-        password: guardPassword,
-        name: "박경비",
-        role: "guard",
-        company: "dawon_pmc",
-        phone: "010-5555-6666",
-        isActive: true,
-      });
-
-      const site1 = await storage.createSite({
-        name: "삼성타워",
-        address: "서울시 강남구 테헤란로 123",
-        company: "mirae_abm",
-        isActive: true,
-      });
-
-      const site2 = await storage.createSite({
-        name: "현대빌딩",
-        address: "서울시 서초구 서초대로 456",
-        company: "mirae_abm",
-        isActive: true,
-      });
-
-      const site3 = await storage.createSite({
-        name: "LG오피스",
-        address: "서울시 영등포구 여의대로 789",
-        company: "dawon_pmc",
-        isActive: true,
-      });
-
-      const today = getKSTNow();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const twoDaysAgo = new Date(today);
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-      await storage.createAttendanceLog({
-        userId: guard1.id,
-        siteId: site1.id,
-        checkInDate: format(yesterday, "yyyy-MM-dd"),
-      });
-
-      await storage.createAttendanceLog({
-        userId: guard2.id,
-        siteId: site1.id,
-        checkInDate: format(yesterday, "yyyy-MM-dd"),
-      });
-
-      await storage.createAttendanceLog({
-        userId: guard1.id,
-        siteId: site1.id,
-        checkInDate: format(twoDaysAgo, "yyyy-MM-dd"),
-      });
-
-      await storage.createAttendanceLog({
-        userId: guard3.id,
-        siteId: site3.id,
-        checkInDate: format(yesterday, "yyyy-MM-dd"),
       });
 
       res.json({
-        message: "초기 데이터가 생성되었습니다",
+        message: "초기 데이터가 생성되었습니다 (본사 관리자 계정)",
         seeded: true,
         data: {
-          users: [
-            { ...admin, password: undefined },
-            { ...guard1, password: undefined },
-            { ...guard2, password: undefined },
-            { ...guard3, password: undefined },
-          ],
-          sites: [site1, site2, site3],
+          admin: { ...admin, password: undefined },
         },
       });
     } catch (error) {
@@ -679,852 +1407,93 @@ export async function registerRoutes(
     }
   });
 
-  // Database status check endpoint
-  app.all("/api/db-status", async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      
-      // Check if tables exist
-      const tablesResult = await pool.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_type = 'BASE TABLE';
-      `);
-      
-      const tables = tablesResult.rows.map(r => r.table_name);
-      
-      // Check enum types
-      const enumsResult = await pool.query(`
-        SELECT typname FROM pg_type 
-        WHERE typtype = 'e';
-      `);
-      
-      const enums = enumsResult.rows.map(r => r.typname);
-      
-      // Count records in each table
-      const counts: Record<string, number> = {};
-      for (const table of tables) {
-        try {
-          const countResult = await pool.query(`SELECT COUNT(*) FROM "${table}"`);
-          counts[table] = parseInt(countResult.rows[0].count);
-        } catch (e) {
-          counts[table] = -1; // Error counting
-        }
-      }
-      
-      res.json({
-        connected: true,
-        tables,
-        enums,
-        counts,
-        requiredTables: ['users', 'sites', 'attendance_logs', 'vacation_requests'],
-        requiredEnums: ['role', 'company', 'vacation_status'],
-        missingTables: ['users', 'sites', 'attendance_logs', 'vacation_requests'].filter(t => !tables.includes(t)),
-        missingEnums: ['role', 'company', 'vacation_status'].filter(e => !enums.includes(e))
-      });
-    } catch (error) {
-      console.error("DB status error:", error);
-      res.status(500).json({ 
-        connected: false,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-
-  // Database setup endpoint for production
-  app.all("/api/setup-db", async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      
-      // Create enums if they don't exist
-      await pool.query(`
-        DO $$ BEGIN
-          CREATE TYPE role AS ENUM ('admin', 'guard');
-        EXCEPTION
-          WHEN duplicate_object THEN null;
-        END $$;
-      `);
-      
-      await pool.query(`
-        DO $$ BEGIN
-          CREATE TYPE company AS ENUM ('mirae_abm', 'dawon_pmc');
-        EXCEPTION
-          WHEN duplicate_object THEN null;
-        END $$;
-      `);
-      
-      await pool.query(`
-        DO $$ BEGIN
-          CREATE TYPE vacation_status AS ENUM ('pending', 'approved', 'rejected');
-        EXCEPTION
-          WHEN duplicate_object THEN null;
-        END $$;
-      `);
-      
-      await pool.query(`
-        DO $$ BEGIN
-          CREATE TYPE attendance_type AS ENUM ('normal', 'annual', 'half_day', 'sick', 'family_event', 'other');
-        EXCEPTION
-          WHEN duplicate_object THEN null;
-        END $$;
-      `);
-      
-      // Create tables if they don't exist
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          username TEXT NOT NULL UNIQUE,
-          password TEXT NOT NULL,
-          name TEXT NOT NULL,
-          role role NOT NULL DEFAULT 'guard',
-          company company NOT NULL DEFAULT 'mirae_abm',
-          phone TEXT,
-          site_id VARCHAR,
-          is_active BOOLEAN NOT NULL DEFAULT true
-        );
-      `);
-      
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS sites (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          name TEXT NOT NULL,
-          address TEXT,
-          company company NOT NULL DEFAULT 'mirae_abm',
-          qr_code TEXT,
-          is_active BOOLEAN NOT NULL DEFAULT true
-        );
-      `);
-      
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS attendance_logs (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id VARCHAR NOT NULL REFERENCES users(id),
-          site_id VARCHAR NOT NULL REFERENCES sites(id),
-          check_in_time TIMESTAMP NOT NULL DEFAULT NOW(),
-          check_in_date DATE NOT NULL,
-          latitude TEXT,
-          longitude TEXT,
-          attendance_type attendance_type NOT NULL DEFAULT 'normal',
-          vacation_request_id VARCHAR
-        );
-      `);
-      
-      // Add new columns if they don't exist (for existing databases)
-      await pool.query(`
-        ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS attendance_type attendance_type NOT NULL DEFAULT 'normal';
-      `).catch(() => {});
-      await pool.query(`
-        ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS vacation_request_id VARCHAR;
-      `).catch(() => {});
-      
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS vacation_requests (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id VARCHAR NOT NULL REFERENCES users(id),
-          start_date DATE NOT NULL,
-          end_date DATE NOT NULL,
-          reason TEXT,
-          status vacation_status NOT NULL DEFAULT 'pending',
-          requested_at TIMESTAMP NOT NULL DEFAULT NOW(),
-          responded_at TIMESTAMP,
-          responded_by VARCHAR REFERENCES users(id)
-        );
-      `);
-      
-      res.json({ 
-        message: "데이터베이스 테이블이 성공적으로 생성되었습니다.",
-        success: true 
-      });
-    } catch (error) {
-      console.error("Setup DB error:", error);
-      res.status(500).json({ 
-        error: "데이터베이스 설정 중 오류가 발생했습니다",
-        details: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-
-  // Contacts API
-  app.get("/api/contacts", requireAdmin, async (req, res) => {
-    try {
-      const contacts = await storage.getContacts();
-      res.json(contacts);
-    } catch (error) {
-      console.error("Get contacts error:", error);
-      res.status(500).json({ error: "담당자 목록을 불러오는데 실패했습니다" });
-    }
-  });
-
-  app.post("/api/contacts", requireAdmin, async (req, res) => {
-    try {
-      const validatedData = insertContactSchema.parse(req.body);
-      const contact = await storage.createContact(validatedData);
-      res.status(201).json(contact);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors[0].message });
-      }
-      console.error("Create contact error:", error);
-      res.status(500).json({ error: "담당자 생성 중 오류가 발생했습니다" });
-    }
-  });
-
-  app.patch("/api/contacts/:id", requireAdmin, async (req, res) => {
+  // ============ QR CODE ============
+  app.post("/api/sites/:id/qr", requireHqAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { department, name, email, company } = req.body;
-      
-      const updateData: any = {};
-      if (department !== undefined) updateData.department = department;
-      if (name !== undefined) updateData.name = name;
-      if (email !== undefined) updateData.email = email;
-      if (company !== undefined) updateData.company = company;
-      
-      const contact = await storage.updateContact(id, updateData);
-      if (!contact) {
-        return res.status(404).json({ error: "담당자를 찾을 수 없습니다" });
+      const site = await storage.getSite(id);
+      if (!site) {
+        return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
       }
-      res.json(contact);
+
+      const qrData = JSON.stringify({ type: "attendance", siteId: id });
+      const updated = await storage.updateSite(id, { qrCode: qrData });
+      res.json(updated);
     } catch (error) {
-      console.error("Update contact error:", error);
-      res.status(500).json({ error: "담당자 수정 중 오류가 발생했습니다" });
+      console.error("Generate QR error:", error);
+      res.status(500).json({ error: "QR 코드 생성 중 오류가 발생했습니다" });
     }
   });
 
-  app.delete("/api/contacts/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      await storage.deleteContact(id);
-      res.status(204).send();
-    } catch (error) {
-      console.error("Delete contact error:", error);
-      res.status(500).json({ error: "담당자 삭제 중 오류가 발생했습니다" });
-    }
-  });
 
-  // Send email with PDF attachment (generates PDF on server)
-  app.post("/api/send-attendance-email", requireAdmin, async (req, res) => {
+  // ============ EMAIL ============
+  app.post("/api/email/send", requireAuth, async (req, res) => {
     try {
-      const { contactIds, selectedSiteId, selectedMonth } = req.body;
-      
-      if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
-        return res.status(400).json({ error: "수신자를 선택해주세요" });
+      const { to, subject, html } = req.body;
+
+      // Basic validation
+      if (!to || !subject || !html) {
+        return res.status(400).json({ error: "Missing required fields: to, subject, html" });
       }
-      
-      if (!selectedSiteId) {
-        return res.status(400).json({ error: "현장을 선택해주세요" });
+
+      // Check for credentials
+      if (!process.env.NODEMAILER_USER || !process.env.NODEMAILER_PASS) {
+        console.warn("Email credentials missing. Simulating email send.");
+        return res.json({ message: "Email simulated (credentials missing)", simulated: true });
       }
-      
-      if (!selectedMonth) {
-        return res.status(400).json({ error: "월을 선택해주세요" });
-      }
-      
-      const contacts = await storage.getContacts();
-      const selectedContacts = contacts.filter(c => contactIds.includes(c.id));
-      
-      if (selectedContacts.length === 0) {
-        return res.status(400).json({ error: "유효한 수신자가 없습니다" });
-      }
-      
-      const emailAddresses = selectedContacts.map(c => c.email);
-      const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
-      
-      // Fetch data for PDF generation
-      const users = await storage.getUsers();
-      const sites = await storage.getSites();
-      const attendanceLogs = await storage.getAttendanceLogs();
-      
-      const selectedSite = sites.find(s => s.id === selectedSiteId);
-      const siteName = selectedSite?.name || "전체";
-      const monthDate = new Date(selectedMonth);
-      const monthString = format(monthDate, "yyyy년 M월", { locale: ko });
-      
-      // Generate PDF on server
-      const pdfBuffer = await generateAttendancePdf({
-        users,
-        attendanceLogs,
-        sites,
-        selectedMonth: monthDate,
-        selectedSiteId,
-      });
-      
-      const fileName = `출근기록부_${siteName}_${format(monthDate, "yyyy년_M월", { locale: ko })}.pdf`;
-      
-      const success = await sendEmail({
-        to: emailAddresses,
-        subject: `[출근기록부] ${siteName} - ${monthString}`,
-        html: `
-          <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
-            <h2>출근기록부 발송</h2>
-            <p><strong>현장:</strong> ${siteName}</p>
-            <p><strong>기간:</strong> ${monthString}</p>
-            <p><strong>수신:</strong> ${recipientNames}</p>
-            <br/>
-            <p>첨부된 PDF 파일을 확인해 주세요.</p>
-            <br/>
-            <p style="color: #666; font-size: 12px;">본 메일은 경비원 근태관리 시스템에서 자동 발송되었습니다.</p>
-          </div>
-        `,
-        attachments: [
-          {
-            filename: fileName,
-            content: pdfBuffer,
-            contentType: "application/pdf",
+
+      let transporter;
+      if (process.env.SMTP_HOST) {
+        transporter = ((await import("nodemailer")).default).createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT) || 587,
+          secure: process.env.SMTP_SECURE === "true", // true for 465, false for other ports
+          auth: {
+            user: process.env.NODEMAILER_USER,
+            pass: process.env.NODEMAILER_PASS,
           },
-        ],
-      });
-      
-      if (success) {
-        res.json({ 
-          message: `${selectedContacts.length}명에게 이메일을 발송했습니다`,
-          recipients: recipientNames
         });
       } else {
-        res.status(500).json({ error: "이메일 발송에 실패했습니다" });
-      }
-    } catch (error) {
-      console.error("Send email error:", error);
-      res.status(500).json({ error: "이메일 발송 중 오류가 발생했습니다" });
-    }
-  });
-
-  app.all("/api/init-admin", async (req, res) => {
-    try {
-      const existingUsers = await storage.getUsers();
-      const existingAdmin = existingUsers.find(u => u.role === "admin");
-      
-      if (existingAdmin) {
-        const newPassword = await bcrypt.hash("admin123", 10);
-        await storage.updateUser(existingAdmin.id, { 
-          username: "관리자",
-          password: newPassword 
-        });
-        return res.json({ 
-          message: "관리자 계정이 초기화되었습니다. 아이디: 관리자, 비밀번호: admin123",
-          reset: true 
-        });
-      }
-      
-      const adminPassword = await bcrypt.hash("admin123", 10);
-      await storage.createUser({
-        username: "관리자",
-        password: adminPassword,
-        name: "관리자",
-        role: "admin",
-        company: "mirae_abm",
-        phone: "010-1234-5678",
-        isActive: true,
-      });
-      
-      res.json({ 
-        message: "관리자 계정이 생성되었습니다. 아이디: 관리자, 비밀번호: admin123",
-        created: true 
-      });
-    } catch (error) {
-      console.error("Init admin error:", error);
-      res.status(500).json({ error: "관리자 계정 초기화 중 오류가 발생했습니다" });
-    }
-  });
-
-  // ========== Vacation Management API ==========
-  
-  // Get all vacation requests (admin)
-  app.get("/api/vacations", requireAdmin, async (req, res) => {
-    try {
-      const { status, userId, siteId } = req.query;
-      let vacations = await storage.getVacationRequests();
-      
-      if (status && typeof status === "string") {
-        vacations = vacations.filter(v => v.status === status);
-      }
-      
-      if (userId && typeof userId === "string") {
-        vacations = vacations.filter(v => v.userId === userId);
-      }
-      
-      if (siteId && typeof siteId === "string") {
-        const users = await storage.getUsers();
-        const siteUserIds = users.filter(u => u.siteId === siteId).map(u => u.id);
-        vacations = vacations.filter(v => siteUserIds.includes(v.userId));
-      }
-      
-      res.json(vacations);
-    } catch (error) {
-      console.error("Get vacations error:", error);
-      res.status(500).json({ error: "휴가 신청 목록을 불러오는데 실패했습니다" });
-    }
-  });
-
-  // Get user's own vacation requests (guard)
-  app.get("/api/vacations/my", requireAuth, async (req, res) => {
-    try {
-      const userId = req.session.userId!;
-      const vacations = await storage.getVacationRequestsByUser(userId);
-      res.json(vacations);
-    } catch (error) {
-      console.error("Get my vacations error:", error);
-      res.status(500).json({ error: "휴가 신청 목록을 불러오는데 실패했습니다" });
-    }
-  });
-
-  // Get user's leave balance
-  app.get("/api/vacations/balance", requireAuth, async (req, res) => {
-    try {
-      const userId = req.session.userId!;
-      const user = await storage.getUser(userId);
-      
-      if (!user) {
-        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
-      }
-      
-      if (!user.hireDate) {
-        return res.json({
-          totalAccrued: 0,
-          totalUsed: 0,
-          totalRemaining: 0,
-          accruals: [],
-          yearsOfService: 0,
-          monthsOfService: 0,
-          message: "입사일이 설정되지 않았습니다",
-        });
-      }
-      
-      const vacations = await storage.getVacationRequestsByUser(userId);
-      const approvedVacations = vacations.filter(v => v.status === "approved");
-      const usedDays = approvedVacations
-        .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
-        .reduce((sum, v) => sum + (v.days || 1), 0);
-      
-      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays, getKSTNow());
-      res.json(balance);
-    } catch (error) {
-      console.error("Get leave balance error:", error);
-      res.status(500).json({ error: "연차 잔여일수를 계산하는데 실패했습니다" });
-    }
-  });
-
-  // Get specific user's leave balance (admin)
-  app.get("/api/vacations/balance/:userId", requireAdmin, async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const user = await storage.getUser(userId);
-      
-      if (!user) {
-        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
-      }
-      
-      if (!user.hireDate) {
-        return res.json({
-          totalAccrued: 0,
-          totalUsed: 0,
-          totalRemaining: 0,
-          accruals: [],
-          yearsOfService: 0,
-          monthsOfService: 0,
-          message: "입사일이 설정되지 않았습니다",
-        });
-      }
-      
-      const vacations = await storage.getVacationRequestsByUser(userId);
-      const approvedVacations = vacations.filter(v => v.status === "approved");
-      const usedDays = approvedVacations
-        .filter(v => v.vacationType !== "family_event" && v.vacationType !== "other")
-        .reduce((sum, v) => sum + (v.days || 1), 0);
-      
-      const balance = calculateAnnualLeave(new Date(user.hireDate), usedDays, getKSTNow());
-      res.json(balance);
-    } catch (error) {
-      console.error("Get user leave balance error:", error);
-      res.status(500).json({ error: "연차 잔여일수를 계산하는데 실패했습니다" });
-    }
-  });
-
-  // Create vacation request (guard or admin)
-  app.post("/api/vacations", requireAuth, async (req, res) => {
-    try {
-      const { vacationType, startDate, endDate, reason, substituteWork, userId: requestUserId } = req.body;
-      
-      // Admin can create vacation for any user, guard can only create for themselves
-      let targetUserId = req.session.userId!;
-      const isAdminCreating = requestUserId && req.session.role === "admin";
-      if (isAdminCreating) {
-        targetUserId = requestUserId;
-      }
-      
-      if (!startDate || !endDate) {
-        return res.status(400).json({ error: "시작일과 종료일을 입력해주세요" });
-      }
-      
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const days = vacationType === "half_day" ? 0.5 : differenceInDays(end, start) + 1;
-      
-      // Create the vacation request
-      let vacation = await storage.createVacationRequest({
-        userId: targetUserId,
-        vacationType: vacationType || "annual",
-        startDate,
-        endDate,
-        days,
-        reason: reason || null,
-        substituteWork: substituteWork || "X",
-      });
-      
-      // Admin-created vacations are auto-approved
-      if (isAdminCreating) {
-        vacation = (await storage.updateVacationRequest(vacation.id, {
-          status: "approved",
-          respondedAt: new Date(),
-          respondedBy: req.session.userId,
-        }))!;
-        
-        // Create attendance records for the approved vacation
-        await createVacationAttendanceRecords(vacation);
-      }
-      
-      res.status(201).json(vacation);
-    } catch (error) {
-      console.error("Create vacation request error:", error);
-      res.status(500).json({ error: "휴가 신청 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Approve vacation request (admin)
-  app.patch("/api/vacations/:id/approve", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const adminId = req.session.userId!;
-      
-      const vacation = await storage.updateVacationRequest(id, {
-        status: "approved",
-        respondedAt: new Date(),
-        respondedBy: adminId,
-      });
-      
-      if (!vacation) {
-        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
-      }
-      
-      // Create attendance records for the approved vacation
-      await createVacationAttendanceRecords(vacation);
-      
-      res.json(vacation);
-    } catch (error) {
-      console.error("Approve vacation error:", error);
-      res.status(500).json({ error: "휴가 승인 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Reject vacation request (admin)
-  app.patch("/api/vacations/:id/reject", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { rejectionReason } = req.body;
-      const adminId = req.session.userId!;
-      
-      const vacation = await storage.updateVacationRequest(id, {
-        status: "rejected",
-        respondedAt: new Date(),
-        respondedBy: adminId,
-        rejectionReason: rejectionReason || null,
-      });
-      
-      if (!vacation) {
-        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
-      }
-      
-      res.json(vacation);
-    } catch (error) {
-      console.error("Reject vacation error:", error);
-      res.status(500).json({ error: "휴가 반려 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Update vacation request (admin)
-  app.patch("/api/vacations/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { vacationType, startDate, endDate, days, reason, status } = req.body;
-      
-      const updateData: any = {};
-      if (vacationType !== undefined) updateData.vacationType = vacationType;
-      if (startDate !== undefined) updateData.startDate = startDate;
-      if (endDate !== undefined) updateData.endDate = endDate;
-      if (reason !== undefined) updateData.reason = reason;
-      if (status !== undefined) updateData.status = status;
-      
-      // Recalculate days if dates are provided but days is not explicitly set
-      if ((startDate !== undefined || endDate !== undefined) && days === undefined) {
-        const existingVacation = await storage.getVacationRequests();
-        const current = existingVacation.find(v => v.id === id);
-        if (current) {
-          const newStart = new Date(startDate || current.startDate);
-          const newEnd = new Date(endDate || current.endDate);
-          const newVacationType = vacationType || current.vacationType;
-          updateData.days = newVacationType === "half_day" ? 0.5 : differenceInDays(newEnd, newStart) + 1;
-        }
-      } else if (days !== undefined) {
-        updateData.days = days;
-      }
-      
-      const vacation = await storage.updateVacationRequest(id, updateData);
-      
-      if (!vacation) {
-        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
-      }
-      
-      res.json(vacation);
-    } catch (error) {
-      console.error("Update vacation error:", error);
-      res.status(500).json({ error: "휴가 수정 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Delete vacation request (admin)
-  app.delete("/api/vacations/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      // Delete associated attendance records first
-      await deleteVacationAttendanceRecords(id);
-      
-      await storage.deleteVacationRequest(id);
-      res.status(204).send();
-    } catch (error) {
-      console.error("Delete vacation error:", error);
-      res.status(500).json({ error: "휴가 삭제 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Download vacation PDF (admin)
-  app.get("/api/vacation-pdf/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const vacations = await storage.getVacationRequests();
-      const vacation = vacations.find(v => v.id === id);
-      
-      if (!vacation) {
-        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
-      }
-      
-      const users = await storage.getUsers();
-      const user = users.find(u => u.id === vacation.userId);
-      
-      if (!user) {
-        return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
-      }
-      
-      const sites = await storage.getSites();
-      const site = user.siteId ? sites.find(s => s.id === user.siteId) : null;
-      
-      const pdfBuffer = await generateVacationPdf({
-        vacation,
-        user,
-        site,
-      });
-      
-      const fileName = `휴가신청서_${user?.name}_${format(new Date(vacation.startDate), "yyyy-MM-dd")}.pdf`;
-      
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
-      res.send(pdfBuffer);
-    } catch (error) {
-      console.error("Download vacation PDF error:", error);
-      res.status(500).json({ error: "PDF 생성 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Download vacation status PDF (admin)
-  app.get("/api/vacation-status-pdf", requireAdmin, async (req, res) => {
-    try {
-      const { siteId, year } = req.query;
-      
-      const users = await storage.getUsers();
-      const sites = await storage.getSites();
-      const vacations = await storage.getVacationRequests();
-      
-      const selectedSite = siteId && siteId !== "all" ? sites.find(s => s.id === siteId) : null;
-      const siteName = selectedSite?.name || "전체";
-      const targetYear = year ? parseInt(year as string) : getKSTYear();
-      
-      const pdfBuffer = await generateVacationStatusPdf({
-        users,
-        sites,
-        vacations,
-        siteId: siteId && siteId !== "all" ? siteId as string : undefined,
-        year: targetYear,
-      });
-      
-      const fileName = `휴가현황_${siteName}_${targetYear}년.pdf`;
-      
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
-      res.send(pdfBuffer);
-    } catch (error) {
-      console.error("Download vacation status PDF error:", error);
-      res.status(500).json({ error: "PDF 생성 중 오류가 발생했습니다" });
-    }
-  });
-
-  // Send vacation PDF email (admin)
-  app.post("/api/send-vacation-email", requireAdmin, async (req, res) => {
-    try {
-      const { contactIds, vacationId } = req.body;
-      
-      if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
-        return res.status(400).json({ error: "수신자를 선택해주세요" });
-      }
-      
-      if (!vacationId) {
-        return res.status(400).json({ error: "휴가 신청을 선택해주세요" });
-      }
-      
-      const contacts = await storage.getContacts();
-      const selectedContacts = contacts.filter(c => contactIds.includes(c.id));
-      
-      if (selectedContacts.length === 0) {
-        return res.status(400).json({ error: "유효한 수신자가 없습니다" });
-      }
-      
-      const emailAddresses = selectedContacts.map(c => c.email);
-      const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
-      
-      const vacations = await storage.getVacationRequests();
-      const vacation = vacations.find(v => v.id === vacationId);
-      
-      if (!vacation) {
-        return res.status(404).json({ error: "휴가 신청을 찾을 수 없습니다" });
-      }
-      
-      const users = await storage.getUsers();
-      const user = users.find(u => u.id === vacation.userId);
-      const sites = await storage.getSites();
-      const site = user?.siteId ? sites.find(s => s.id === user.siteId) : null;
-      
-      const pdfBuffer = await generateVacationPdf({
-        vacation,
-        user: user!,
-        site,
-      });
-      
-      const fileName = `휴가신청서_${user?.name}_${format(new Date(vacation.startDate), "yyyy-MM-dd")}.pdf`;
-      
-      const success = await sendEmail({
-        to: emailAddresses,
-        subject: `[휴가신청서] ${user?.name} - ${format(new Date(vacation.startDate), "yyyy년 M월 d일", { locale: ko })}`,
-        html: `
-          <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
-            <h2>휴가신청서 발송</h2>
-            <p><strong>신청자:</strong> ${user?.name}</p>
-            <p><strong>현장:</strong> ${site?.name || "미배정"}</p>
-            <p><strong>기간:</strong> ${format(new Date(vacation.startDate), "yyyy년 M월 d일", { locale: ko })} ~ ${format(new Date(vacation.endDate), "yyyy년 M월 d일", { locale: ko })}</p>
-            <p><strong>일수:</strong> ${vacation.days}일</p>
-            <p><strong>사유:</strong> ${vacation.reason || "-"}</p>
-            <br/>
-            <p>첨부된 PDF 파일을 확인해 주세요.</p>
-            <br/>
-            <p style="color: #666; font-size: 12px;">본 메일은 경비원 근태관리 시스템에서 자동 발송되었습니다.</p>
-          </div>
-        `,
-        attachments: [
-          {
-            filename: fileName,
-            content: pdfBuffer,
-            contentType: "application/pdf",
+        transporter = ((await import("nodemailer")).default).createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.NODEMAILER_USER,
+            pass: process.env.NODEMAILER_PASS,
           },
-        ],
-      });
-      
-      if (success) {
-        res.json({ 
-          message: `${selectedContacts.length}명에게 이메일을 발송했습니다`,
-          recipients: recipientNames
         });
-      } else {
-        res.status(500).json({ error: "이메일 발송에 실패했습니다" });
       }
+
+      const currentUser = await storage.getUser(req.session.userId!);
+      let senderName = "관리자";
+      const companyVal = currentUser?.company as string;
+      if (companyVal === "mirae_abm" || companyVal === "미래에이비엠") {
+        senderName = "미래에이비엠";
+      } else if (companyVal === "dawon_pmc" || companyVal === "다원피엠씨") {
+        senderName = "다원피엠씨";
+      } else if (companyVal) {
+        senderName = companyVal;
+      }
+      const fromAddress = `"${senderName}" <${process.env.NODEMAILER_USER}>`;
+
+      const info = await transporter.sendMail({
+        from: fromAddress, // sender address
+        to, // list of receivers
+        subject, // Subject line
+        html, // html body
+        attachments: req.body.attachments, // attachments
+      });
+
+      console.log("Message sent: %s", info.messageId);
+      res.json({ message: "Email sent successfully", messageId: info.messageId });
+
     } catch (error) {
-      console.error("Send vacation email error:", error);
-      res.status(500).json({ error: "이메일 발송 중 오류가 발생했습니다" });
+      console.error("Email send error:", error);
+      res.status(500).json({ error: "이메일 전송 중 오류가 발생했습니다" });
     }
   });
 
-  // Send vacation status PDF email (admin)
-  app.post("/api/send-vacation-status-email", requireAdmin, async (req, res) => {
-    try {
-      const { contactIds, siteId, year } = req.body;
-      
-      if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
-        return res.status(400).json({ error: "수신자를 선택해주세요" });
-      }
-      
-      const contacts = await storage.getContacts();
-      const selectedContacts = contacts.filter(c => contactIds.includes(c.id));
-      
-      if (selectedContacts.length === 0) {
-        return res.status(400).json({ error: "유효한 수신자가 없습니다" });
-      }
-      
-      const emailAddresses = selectedContacts.map(c => c.email);
-      const recipientNames = selectedContacts.map(c => `${c.name} (${c.department})`).join(", ");
-      
-      const users = await storage.getUsers();
-      const sites = await storage.getSites();
-      const vacations = await storage.getVacationRequests();
-      
-      const selectedSite = siteId ? sites.find(s => s.id === siteId) : null;
-      const siteName = selectedSite?.name || "전체";
-      const targetYear = year || getKSTYear();
-      
-      const pdfBuffer = await generateVacationStatusPdf({
-        users,
-        sites,
-        vacations,
-        siteId,
-        year: targetYear,
-      });
-      
-      const fileName = `휴가현황_${siteName}_${targetYear}년.pdf`;
-      
-      const success = await sendEmail({
-        to: emailAddresses,
-        subject: `[휴가현황] ${siteName} - ${targetYear}년`,
-        html: `
-          <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px;">
-            <h2>휴가현황 발송</h2>
-            <p><strong>현장:</strong> ${siteName}</p>
-            <p><strong>기간:</strong> ${targetYear}년</p>
-            <p><strong>수신:</strong> ${recipientNames}</p>
-            <br/>
-            <p>첨부된 PDF 파일을 확인해 주세요.</p>
-            <br/>
-            <p style="color: #666; font-size: 12px;">본 메일은 경비원 근태관리 시스템에서 자동 발송되었습니다.</p>
-          </div>
-        `,
-        attachments: [
-          {
-            filename: fileName,
-            content: pdfBuffer,
-            contentType: "application/pdf",
-          },
-        ],
-      });
-      
-      if (success) {
-        res.json({ 
-          message: `${selectedContacts.length}명에게 이메일을 발송했습니다`,
-          recipients: recipientNames
-        });
-      } else {
-        res.status(500).json({ error: "이메일 발송에 실패했습니다" });
-      }
-    } catch (error) {
-      console.error("Send vacation status email error:", error);
-      res.status(500).json({ error: "이메일 발송 중 오류가 발생했습니다" });
-    }
-  });
+
+
 
   return httpServer;
 }

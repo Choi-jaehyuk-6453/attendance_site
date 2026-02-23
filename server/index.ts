@@ -1,4 +1,6 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+// Trigger restart
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
@@ -8,23 +10,32 @@ import { pool } from "./db";
 
 async function initializeDatabase() {
   try {
+    // Drop old enums and types to start fresh
     // Create enums if they don't exist
     await pool.query(`
       DO $$ BEGIN
-        CREATE TYPE role AS ENUM ('admin', 'guard');
+        CREATE TYPE role AS ENUM ('hq_admin', 'site_manager', 'worker');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
     `);
-    
+
     await pool.query(`
       DO $$ BEGIN
-        CREATE TYPE company AS ENUM ('mirae_abm', 'dawon_pmc');
+        CREATE TYPE attendance_type AS ENUM ('normal', 'annual', 'half_day', 'sick', 'family_event', 'other');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
     `);
-    
+
+    await pool.query(`
+      DO $$ BEGIN
+        CREATE TYPE attendance_source AS ENUM ('qr', 'manual', 'vacation');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
     await pool.query(`
       DO $$ BEGIN
         CREATE TYPE vacation_status AS ENUM ('pending', 'approved', 'rejected');
@@ -32,33 +43,53 @@ async function initializeDatabase() {
         WHEN duplicate_object THEN null;
       END $$;
     `);
-    
-    // Create tables if they don't exist
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        username TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role role NOT NULL DEFAULT 'guard',
-        company company NOT NULL DEFAULT 'mirae_abm',
-        phone TEXT,
-        site_id VARCHAR,
-        is_active BOOLEAN NOT NULL DEFAULT true
-      );
+      DO $$ BEGIN
+        CREATE TYPE vacation_type AS ENUM ('annual', 'half_day', 'sick', 'family_event', 'other');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
     `);
-    
+
+    // Create tables if they don't exist
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sites (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
         name TEXT NOT NULL,
         address TEXT,
-        company company NOT NULL DEFAULT 'mirae_abm',
+        contract_start_date DATE,
+        contract_end_date DATE,
         qr_code TEXT,
         is_active BOOLEAN NOT NULL DEFAULT true
       );
     `);
-    
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS departments (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        site_id VARCHAR NOT NULL REFERENCES sites(id),
+        name TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        username TEXT NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role role NOT NULL DEFAULT 'worker',
+        phone TEXT,
+        site_id VARCHAR,
+        department_id VARCHAR,
+        hire_date DATE,
+        is_active BOOLEAN NOT NULL DEFAULT true
+      );
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS attendance_logs (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -67,35 +98,53 @@ async function initializeDatabase() {
         check_in_time TIMESTAMP NOT NULL DEFAULT NOW(),
         check_in_date DATE NOT NULL,
         latitude TEXT,
-        longitude TEXT
+        longitude TEXT,
+        attendance_type attendance_type NOT NULL DEFAULT 'normal',
+        source attendance_source NOT NULL DEFAULT 'qr',
+        vacation_request_id VARCHAR
       );
     `);
-    
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vacation_requests (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id VARCHAR NOT NULL REFERENCES users(id),
+        vacation_type vacation_type NOT NULL DEFAULT 'annual',
         start_date DATE NOT NULL,
         end_date DATE NOT NULL,
+        days INTEGER NOT NULL DEFAULT 1,
         reason TEXT,
+        substitute_work TEXT NOT NULL DEFAULT 'X',
         status vacation_status NOT NULL DEFAULT 'pending',
         requested_at TIMESTAMP NOT NULL DEFAULT NOW(),
         responded_at TIMESTAMP,
-        responded_by VARCHAR REFERENCES users(id)
+        responded_by VARCHAR REFERENCES users(id),
+        rejection_reason TEXT
       );
     `);
-    
-    // Data migration: fix source field for existing records
-    // Records with vacation_request_id should have source='vacation'
+
+    // Create session table if it doesn't exist
     await pool.query(`
-      UPDATE attendance_logs SET source = 'vacation'
-      WHERE vacation_request_id IS NOT NULL AND source = 'qr';
+      CREATE TABLE IF NOT EXISTS "session" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL
+      )
+      WITH (OIDS=FALSE);
     `);
-    // Records with non-normal attendance_type and no vacation_request_id were manually created
-    await pool.query(`
-      UPDATE attendance_logs SET source = 'manual'
-      WHERE attendance_type != 'normal' AND vacation_request_id IS NULL AND source = 'qr';
-    `);
+
+    // Add constraint if not exists (ignore error if exists)
+    try {
+      await pool.query(`
+        ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+      `);
+    } catch (e: any) {
+      if (e.code !== '42P16') { // 42P16: multiple primary keys
+        console.log('Session table constraint notice:', e.message);
+      }
+    }
+
+    await pool.query(`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")`);
 
     console.log("Database initialized successfully");
   } catch (error) {
@@ -115,7 +164,8 @@ declare module "http" {
 declare module "express-session" {
   interface SessionData {
     userId: string;
-    role: "admin" | "guard";
+    role: "hq_admin" | "site_manager" | "worker";
+    siteId?: string;
   }
 }
 
@@ -129,7 +179,7 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-// Trust proxy for production (Replit uses reverse proxy)
+// Trust proxy for production
 app.set("trust proxy", 1);
 
 const PgSession = connectPgSimple(session);
@@ -193,7 +243,7 @@ app.use((req, res, next) => {
 (async () => {
   // Initialize database tables on startup
   await initializeDatabase();
-  
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -204,9 +254,6 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -214,19 +261,17 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       log(`serving on port ${port}`);
     },
   );
-})();
+})().catch((err) => {
+  console.error("SERVER STARTUP FAILED:", err);
+  process.exit(1);
+});

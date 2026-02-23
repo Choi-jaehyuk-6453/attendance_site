@@ -1,27 +1,35 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, date, boolean, pgEnum, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, date, boolean, pgEnum, integer, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const roleEnum = pgEnum("role", ["admin", "guard"]);
+export const roleEnum = pgEnum("role", ["hq_admin", "site_manager", "worker"]);
 export const companyEnum = pgEnum("company", ["mirae_abm", "dawon_pmc"]);
-export const shiftEnum = pgEnum("shift", ["day", "A", "B", "C", "D"]);
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
+  username: text("username").notNull(),
   password: text("password").notNull(),
   name: text("name").notNull(),
-  role: roleEnum("role").notNull().default("guard"),
-  company: companyEnum("company").notNull().default("mirae_abm"),
+  role: roleEnum("role").notNull().default("worker"),
   phone: text("phone"),
   siteId: varchar("site_id"),
+  departmentId: varchar("department_id"),
+  jobTitle: text("job_title"),
   hireDate: date("hire_date"),
-  shift: shiftEnum("shift").default("day"),
   isActive: boolean("is_active").notNull().default(true),
+  company: companyEnum("company").default("mirae_abm"),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
+  site: one(sites, {
+    fields: [users.siteId],
+    references: [sites.id],
+  }),
+  department: one(departments, {
+    fields: [users.departmentId],
+    references: [departments.id],
+  }),
   attendanceLogs: many(attendanceLogs),
   vacationRequests: many(vacationRequests),
 }));
@@ -30,15 +38,33 @@ export const sites = pgTable("sites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   address: text("address"),
-  company: companyEnum("company").notNull().default("mirae_abm"),
   contractStartDate: date("contract_start_date"),
   contractEndDate: date("contract_end_date"),
   qrCode: text("qr_code"),
+  managerEmail: text("manager_email"),
   isActive: boolean("is_active").notNull().default(true),
+  company: companyEnum("company").notNull().default("mirae_abm"),
 });
 
 export const sitesRelations = relations(sites, ({ many }) => ({
+  departments: many(departments),
   attendanceLogs: many(attendanceLogs),
+}));
+
+export const departments = pgTable("departments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siteId: varchar("site_id").notNull().references(() => sites.id),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  site: one(sites, {
+    fields: [departments.siteId],
+    references: [sites.id],
+  }),
+  users: many(users),
 }));
 
 export const attendanceTypeEnum = pgEnum("attendance_type", ["normal", "annual", "half_day", "sick", "family_event", "other"]);
@@ -77,7 +103,7 @@ export const vacationRequests = pgTable("vacation_requests", {
   vacationType: vacationTypeEnum("vacation_type").notNull().default("annual"),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
-  days: integer("days").notNull().default(1),
+  days: real("days").notNull().default(1),
   reason: text("reason"),
   substituteWork: text("substitute_work").notNull().default("X"),
   status: vacationStatusEnum("status").notNull().default("pending"),
@@ -98,29 +124,16 @@ export const vacationRequestsRelations = relations(vacationRequests, ({ one }) =
   }),
 }));
 
-export const contacts = pgTable("contacts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  department: text("department").notNull(),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  company: companyEnum("company").notNull().default("mirae_abm"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertContactSchema = createInsertSchema(contacts).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type InsertContact = z.infer<typeof insertContactSchema>;
-export type Contact = typeof contacts.$inferSelect;
-
+// Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
 });
 
 export const insertSiteSchema = createInsertSchema(sites).omit({
+  id: true,
+});
+
+export const insertDepartmentSchema = createInsertSchema(departments).omit({
   id: true,
 });
 
@@ -137,11 +150,15 @@ export const insertVacationRequestSchema = createInsertSchema(vacationRequests).
   status: true,
 });
 
+// Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
 export type InsertSite = z.infer<typeof insertSiteSchema>;
 export type Site = typeof sites.$inferSelect;
+
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type Department = typeof departments.$inferSelect;
 
 export type InsertAttendanceLog = z.infer<typeof insertAttendanceLogSchema>;
 export type AttendanceLog = typeof attendanceLogs.$inferSelect;

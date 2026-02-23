@@ -20,20 +20,18 @@ import {
   CalendarDays,
   CalendarCheck,
   LogOut,
-  UserCog,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import miraeLogoPath from "@assets/미래ABM_LOGO_1768444471519.png";
 
 const attendanceMenuItems = [
   {
     title: "출근기록부",
-    url: "/admin",
+    url: "/hq-admin",
     icon: LayoutDashboard,
   },
   {
     title: "QR 관리",
-    url: "/admin/qr",
+    url: "/hq-admin/qr",
     icon: QrCode,
   },
 ];
@@ -41,12 +39,12 @@ const attendanceMenuItems = [
 const vacationMenuItems = [
   {
     title: "휴가 신청 현황",
-    url: "/admin/vacation-requests",
+    url: "/hq-admin/vacation-requests",
     icon: CalendarCheck,
   },
   {
     title: "휴가 현황",
-    url: "/admin/vacation-status",
+    url: "/hq-admin/vacation-status",
     icon: CalendarDays,
   },
 ];
@@ -54,24 +52,34 @@ const vacationMenuItems = [
 const managementMenuItems = [
   {
     title: "현장 관리",
-    url: "/admin/sites",
+    url: "/hq-admin/sites",
     icon: Building2,
   },
   {
-    title: "근무자 관리",
-    url: "/admin/users",
+    title: "근로자 관리",
+    url: "/hq-admin/users",
     icon: Users,
   },
   {
     title: "담당자 관리",
-    url: "/admin/contacts",
-    icon: UserCog,
+    url: "/hq-admin/managers",
+    icon: Users,
   },
 ];
+
+import { useCompany, type Company } from "@/lib/company";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+  const { company, setCompany } = useCompany();
 
   const handleLogout = async () => {
     await logout();
@@ -81,10 +89,30 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b p-4">
-        <div className="flex items-center gap-2">
-          <img src={miraeLogoPath} alt="미래에이비엠" className="h-6 object-contain" />
-          <span className="font-semibold text-sm">경비원 근태관리</span>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-2 px-2 h-auto py-2">
+              <div className="flex items-center gap-2 w-full">
+                <div className="h-8 w-8 flex items-center justify-center shrink-0">
+                  {company.logo}
+                </div>
+                <div className="flex flex-col items-start gap-0.5 overflow-hidden">
+                  <span className="font-semibold text-sm truncate w-full text-left">{company.name}</span>
+                  <span className="text-xs text-muted-foreground truncate w-full text-left">본사 관리자</span>
+                </div>
+                <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
+              </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[200px]">
+            <DropdownMenuItem onClick={() => setCompany("mirae_abm")}>
+              미래에이비엠
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setCompany("dawon_pmc")}>
+              다원피엠씨
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -96,7 +124,6 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     isActive={location === item.url}
-                    data-testid={`sidebar-${item.url.replace("/admin/", "").replace("/admin", "dashboard")}`}
                   >
                     <Link href={item.url}>
                       <item.icon className="h-4 w-4" />
@@ -118,7 +145,6 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     isActive={location === item.url}
-                    data-testid={`sidebar-${item.url.replace("/admin/", "")}`}
                   >
                     <Link href={item.url}>
                       <item.icon className="h-4 w-4" />
@@ -140,7 +166,6 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     isActive={location === item.url}
-                    data-testid={`sidebar-${item.url.replace("/admin/", "")}`}
                   >
                     <Link href={item.url}>
                       <item.icon className="h-4 w-4" />
@@ -156,7 +181,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t p-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground truncate">
-            {user?.name}님
+            {user?.name}님 (본사)
           </span>
           <Button
             variant="ghost"

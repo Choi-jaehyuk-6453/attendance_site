@@ -1,12 +1,12 @@
 import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.naver.com",
-  port: 587,
-  secure: false,
+  host: process.env.SMTP_HOST || "smtp.naver.com",
+  port: parseInt(process.env.SMTP_PORT || "587", 10),
+  secure: process.env.SMTP_SECURE === "true", // true for 465, false for other ports
   auth: {
-    user: process.env.NAVER_EMAIL,
-    pass: process.env.NAVER_EMAIL_PASSWORD,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASSWORD,
   },
 });
 
@@ -27,7 +27,7 @@ interface SendEmailOptions {
 export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
   try {
     const mailOptions = {
-      from: process.env.NAVER_EMAIL,
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
       to: options.to.join(", "),
       subject: options.subject,
       text: options.text,
