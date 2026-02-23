@@ -269,7 +269,11 @@ export const setupApp = async () => {
   return app;
 };
 
-if (!process.env.VERCEL) {
+// Only start the server listening if this file is run directly.
+// In Vercel, this file is imported by api/index.js, so we don't want to start listening.
+const isMainModule = typeof require !== 'undefined' && require.main === module;
+
+if (!process.env.VERCEL && isMainModule) {
   setupApp().then(() => {
     const port = parseInt(process.env.PORT || "5000", 10);
     httpServer.listen(
