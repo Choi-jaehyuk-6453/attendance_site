@@ -1,11 +1,11 @@
-let appModule;
+const { app, setupApp } = require('../dist/index.cjs');
+
 let isInitialized = false;
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
     if (!isInitialized) {
-        appModule = await import('../dist/index.cjs');
-        await appModule.setupApp();
+        await setupApp();
         isInitialized = true;
     }
-    return appModule.default(req, res);
-}
+    return app(req, res);
+};
