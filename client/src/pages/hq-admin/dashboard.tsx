@@ -28,6 +28,7 @@ import { Building2, Download, Mail, FileSpreadsheet, FileText } from "lucide-rea
 import type { User, AttendanceLog, Site, Department } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { exportToPDF, exportToExcel, sendEmail } from "@/lib/export";
+import { sendEmailWithAttachment } from "@/lib/exportUtils";
 import { EmailRecipientSelector } from "@/components/ui/email-recipient-selector";
 
 import { useCompany } from "@/lib/company";
@@ -361,20 +362,24 @@ export default function HqAdminDashboard() {
             setIsSendingEmail(true);
             const { header, data } = getPdfExportData();
 
-            // Build simple HTML table
-            let html = `<h2>${format(selectedMonth, "yyyy년 MM월")} 출근기록부</h2>`;
-            html += `<table border="1" style="border-collapse: collapse; width: 100%;"><thead><tr>`;
-            header.forEach(h => html += `<th style="padding: 8px; background-color: #f2f2f2;">${h}</th>`);
-            html += `</tr></thead><tbody>`;
+            const todayStr = format(getKSTNow(), "yyyy-MM-dd");
+            const exportSiteName = selectedSiteId === "all"
+                ? "전체현장"
+                : sites.find(s => s.id === selectedSiteId)?.name || "현장";
+            const title = `${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`;
+            const fileName = `${exportSiteName}_출근기록부(${todayStr})`;
 
-            data.forEach(row => {
-                html += `<tr>`;
-                row.forEach(cell => html += `<td style="padding: 8px; text-align: center;">${cell}</td>`);
-                html += `</tr>`;
-            });
-            html += `</tbody></table>`;
+            const pdfBlob = await exportToPDF(title, header, data, fileName, true) as Blob;
 
-            await sendEmail(emailTo, `${format(selectedMonth, "yyyy년 MM월")} 출근기록부`, html);
+            const html = `<p>${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부(PDF)를 첨부하여 보내드립니다.</p>`;
+
+            await sendEmailWithAttachment(
+                emailTo,
+                `${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`,
+                html,
+                { filename: `${fileName}.pdf`, content: pdfBlob }
+            );
+
             toast({ title: "이메일이 전송되었습니다" });
             setEmailDialogOpen(false);
             setEmailTo("");

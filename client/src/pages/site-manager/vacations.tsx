@@ -163,9 +163,12 @@ export default function SiteManagerVacations() {
 
     // Status Export Handlers
     const generateStatusPdfBlob = async () => {
-        if (!statusPrintRef.current) return null;
         setIsExportingStatus(true);
         await new Promise(resolve => setTimeout(resolve, 500));
+        if (!statusPrintRef.current) {
+            setIsExportingStatus(false);
+            return null;
+        }
         try {
             const canvas = await html2canvas(statusPrintRef.current, { scale: 2, useCORS: true, logging: false });
             const imgData = canvas.toDataURL("image/png");
@@ -913,6 +916,7 @@ export default function SiteManagerVacations() {
                         data={balances}
                         siteName={balances.length > 0 ? balances[0].siteName : undefined}
                         year={selectedYear}
+                        companyId={user?.company ?? undefined}
                     />
                 )}
             </div>

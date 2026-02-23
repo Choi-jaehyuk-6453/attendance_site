@@ -115,11 +115,14 @@ export default function HqAdminVacationStatus() {
     };
 
     const generatePdfBlob = async () => {
-        if (!printRef.current) return null;
-
         // Wait a tick for render
         setIsExporting(true);
         await new Promise(resolve => setTimeout(resolve, 500)); // Wait for render
+
+        if (!printRef.current) {
+            setIsExporting(false);
+            return null;
+        }
 
         try {
             const canvas = await html2canvas(printRef.current, {
@@ -556,6 +559,7 @@ export default function HqAdminVacationStatus() {
                         data={balances}
                         siteName={getCurrentSiteName() === "전체 현장" ? undefined : getCurrentSiteName()}
                         year={selectedYear}
+                        companyId={company.id}
                     />
                 )}
             </div>

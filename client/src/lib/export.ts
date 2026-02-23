@@ -14,7 +14,7 @@ import { apiRequest } from "@/lib/queryClient";
 // Since we can't easily download a font file here, we might stick to CSV/Excel for data and Browser Print for PDF if jsPDF is too complex for this environment.
 // But let's try standard jsPDF-autotable first.
 
-export async function exportToPDF(title: string, columns: string[], data: any[][], fileName: string) {
+export async function exportToPDF(title: string, columns: string[], data: any[][], fileName: string, returnBlob: boolean = false) {
     const doc = new jsPDF({ orientation: "landscape" });
 
     try {
@@ -127,6 +127,9 @@ export async function exportToPDF(title: string, columns: string[], data: any[][
         }
     });
 
+    if (returnBlob) {
+        return doc.output("blob");
+    }
     doc.save(`${fileName}.pdf`);
 }
 
