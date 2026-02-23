@@ -1,4 +1,4 @@
-const { app, setupApp } = require('../dist/index.cjs');
+const { default: app, setupApp } = require('../dist/index.cjs');
 
 let isInitialized = false;
 
