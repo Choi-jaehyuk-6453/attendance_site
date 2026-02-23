@@ -1,8 +1,14 @@
 {
+    "framework": "vite",
+    "outputDirectory": "dist/public",
     "rewrites": [
         {
-            "source": "/(.*)",
+            "source": "/api/(.*)",
             "destination": "/api/index.js"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
         }
     ]
 }

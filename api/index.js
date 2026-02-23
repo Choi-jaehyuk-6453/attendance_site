@@ -1,3 +1,11 @@
-// Vercel Serverless Function entry point
-// This requires the built Express application and lets Vercel's wrapper execute it.
-require('../dist/index.cjs');
+const { app, setupApp } = require('../dist/index.cjs');
+
+let isInitialized = false;
+
+module.exports = async (req, res) => {
+    if (!isInitialized) {
+        await setupApp();
+        isInitialized = true;
+    }
+    return app(req, res);
+};

@@ -241,7 +241,10 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+let isInitialized = false;
+
+export const setupApp = async () => {
+  if (isInitialized) return app;
   // Initialize database tables on startup
   await initializeDatabase();
 
@@ -255,24 +258,29 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
     serveStatic(app);
-  } else {
+  } else if (process.env.NODE_ENV !== "production") {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
-})().catch((err) => {
-  console.error("SERVER STARTUP FAILED:", err);
-  process.exit(1);
-});
+  isInitialized = true;
+  return app;
+};
+
+if (!process.env.VERCEL) {
+  setupApp().then(() => {
+    const port = parseInt(process.env.PORT || "5000", 10);
+    httpServer.listen(
+      { port, host: "0.0.0.0" },
+      () => { log(`serving on port ${port}`); },
+    );
+  }).catch((err) => {
+    console.error("SERVER STARTUP FAILED:", err);
+    process.exit(1);
+  });
+}
+
+// Export for Vercel Serverless Function compatibility
+export default app;
