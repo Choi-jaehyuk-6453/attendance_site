@@ -268,6 +268,17 @@ export default function WorkerHome() {
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">퇴근 시간</p>
                                 </div>
+
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 text-xs mx-auto text-muted-foreground"
+                                    onClick={() => setScannerMode("in")}
+                                    disabled={checkInMutation.isPending}
+                                >
+                                    <QrCode className="h-3 w-3 mr-2" />
+                                    같은 날 추가 근무하기 (출근)
+                                </Button>
                             </div>
                         ) : isIncomplete && activeLog?.checkInTime ? (
                             <div className="flex flex-col gap-4 py-4 text-center">

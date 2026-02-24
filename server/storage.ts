@@ -240,7 +240,7 @@ export class DatabaseStorage implements IStorage {
   async getTodayAttendanceLog(userId: string, date: string): Promise<AttendanceLog | undefined> {
     const [log] = await db.select().from(attendanceLogs).where(
       and(eq(attendanceLogs.userId, userId), eq(attendanceLogs.checkInDate, date))
-    );
+    ).orderBy(sql`${attendanceLogs.checkInTime} DESC`);
     return log || undefined;
   }
 

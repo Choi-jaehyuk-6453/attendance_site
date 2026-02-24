@@ -1029,8 +1029,8 @@ export async function registerRoutes(
             return res.status(200).json({ ...updatedLog, siteName: site.name });
           } else {
             const existingLog = await storage.getTodayAttendanceLog(alternativeUser.id, checkInDate);
-            if (existingLog) {
-              return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+            if (existingLog && !existingLog.checkOutTime) {
+              return res.status(400).json({ error: "현재 출근 중입니다. 먼저 퇴근을 진행해주세요." });
             }
 
             const log = await storage.createAttendanceLog({
@@ -1061,8 +1061,8 @@ export async function registerRoutes(
         return res.status(200).json({ ...updatedLog, siteName: site.name });
       } else {
         const existingLog = await storage.getTodayAttendanceLog(userId, checkInDate);
-        if (existingLog) {
-          return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+        if (existingLog && !existingLog.checkOutTime) {
+          return res.status(400).json({ error: "현재 출근 중입니다. 먼저 퇴근을 진행해주세요." });
         }
 
         const log = await storage.createAttendanceLog({
