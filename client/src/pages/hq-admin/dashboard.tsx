@@ -90,7 +90,9 @@ export default function HqAdminDashboard() {
     // Helper: format attendance log to display text
     const getAttendanceSymbol = (info: any) => {
         switch (info.type) {
-            case "normal": return "O";
+            case "normal":
+                if (info.status === "in_only") return "O_in";
+                return "O_out";
             case "annual": return "연";
             case "half_day": return "반";
             case "sick": return "병";
@@ -362,8 +364,8 @@ export default function HqAdminDashboard() {
             const siteName = selectedSiteId === "all"
                 ? "전체현장"
                 : sites.find(s => s.id === selectedSiteId)?.name || "현장";
-            const title = `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`;
-            const fileName = `${siteName}_출근기록부(${todayStr})`;
+            const title = `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부`;
+            const fileName = `${siteName}_출퇴근기록부(${todayStr})`;
 
             await exportToPDF(title, header, data, fileName);
             toast({ title: "PDF 다운로드 완료" });
@@ -380,7 +382,7 @@ export default function HqAdminDashboard() {
             const siteName = selectedSiteId === "all"
                 ? "전체현장"
                 : sites.find(s => s.id === selectedSiteId)?.name || "현장";
-            const fileName = `${siteName}_출근기록부(${todayStr})`;
+            const fileName = `${siteName}_출퇴근기록부(${todayStr})`;
 
             exportToExcel(header, data, fileName);
             toast({ title: "Excel 다운로드 완료" });
@@ -404,16 +406,16 @@ export default function HqAdminDashboard() {
             const exportSiteName = selectedSiteId === "all"
                 ? "전체현장"
                 : sites.find(s => s.id === selectedSiteId)?.name || "현장";
-            const title = `${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`;
-            const fileName = `${exportSiteName}_출근기록부(${todayStr})`;
+            const title = `${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부`;
+            const fileName = `${exportSiteName}_출퇴근기록부(${todayStr})`;
 
             const pdfBlob = await exportToPDF(title, header, data, fileName, true) as Blob;
 
-            const html = `<p>${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부(PDF)를 첨부하여 보내드립니다.</p>`;
+            const html = `<p>${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부(PDF)를 첨부하여 보내드립니다.</p>`;
 
             await sendEmailWithAttachment(
                 emailTo,
-                `${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`,
+                `${exportSiteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부`,
                 html,
                 { filename: `${fileName}.pdf`, content: pdfBlob }
             );
@@ -481,7 +483,7 @@ export default function HqAdminDashboard() {
     return (
         <div className="p-6 space-y-6">
             <div>
-                <h1 className="text-2xl font-bold">출근기록부</h1>
+                <h1 className="text-2xl font-bold">출퇴근기록부</h1>
                 <p className="text-muted-foreground">
                     전체 현장의 출근 현황을 확인하세요
                 </p>
@@ -528,7 +530,7 @@ export default function HqAdminDashboard() {
                     <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
                     <h3 className="text-lg font-medium mb-2">현장을 선택해주세요</h3>
                     <p className="text-muted-foreground text-center">
-                        출근기록부를 확인하려면 위의 현장 선택 드롭다운에서<br />
+                        출퇴근기록부를 확인하려면 위의 현장 선택 드롭다운에서<br />
                         현장을 선택해주세요.
                     </p>
                 </div>
@@ -550,7 +552,7 @@ export default function HqAdminDashboard() {
                     <DialogHeader>
                         <DialogTitle>이메일 발송</DialogTitle>
                         <DialogDescription>
-                            현재 조회된 출근기록부를 이메일로 전송합니다.
+                            현재 조회된 출퇴근기록부를 이메일로 전송합니다.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-4">

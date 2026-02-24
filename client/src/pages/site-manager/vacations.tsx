@@ -687,7 +687,7 @@ export default function SiteManagerVacations() {
                     <DialogHeader>
                         <DialogTitle>휴가 신청 수정</DialogTitle>
                         <DialogDescription>
-                            휴가 내용을 수정합니다. 승인된 휴가를 수정하면 출근기록부도 자동으로 갱신됩니다.
+                            휴가 내용을 수정합니다. 승인된 휴가를 수정하면 출퇴근기록부도 자동으로 갱신됩니다.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">

@@ -186,6 +186,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
 
   const attendanceTypeOptions = [
     { value: "normal", label: "출근 (O)" },
+    { value: "normal_out", label: "퇴근 (O)" },
     { value: "annual", label: "연차 (연)" },
     { value: "half_day", label: "반차 (반)" },
     { value: "sick", label: "병가 (병)" },
@@ -361,7 +362,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
         <div className="p-4 border-b bg-muted/30">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h3 className="font-semibold text-lg">근로자 출근기록부</h3>
+              <h3 className="font-semibold text-lg">근로자 출퇴근기록부</h3>
               <p className="text-sm text-muted-foreground">
                 {format(selectedMonth, "yyyy년 M월", { locale: ko })}
               </p>

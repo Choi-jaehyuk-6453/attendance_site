@@ -1082,7 +1082,7 @@ export async function registerRoutes(
     }
   });
 
-  const validAttendanceTypes = ["normal", "annual", "half_day", "sick", "family_event", "other"] as const;
+  const validAttendanceTypes = ["normal", "normal_out", "annual", "half_day", "sick", "family_event", "other"] as const;
 
   app.post("/api/admin/attendance", requireSiteManagerOrAdmin, async (req, res) => {
     try {
@@ -1097,7 +1097,34 @@ export async function registerRoutes(
         return res.status(400).json({ error: "유효하지 않은 출근/휴가 유형입니다" });
       }
 
+      const baseType = resolvedType === "normal_out" ? "normal" : resolvedType;
       const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
+
+      if (resolvedType === "normal_out") {
+        if (existingLog) {
+          const updated = await storage.updateAttendanceLog(existingLog.id, {
+            checkOutTime: new Date(checkInDate),
+            source: "manual"
+          });
+          return res.status(200).json(updated);
+        } else {
+          // If no check-in exists, create one with both in and out times so it shows as completed (Blue O)
+          const log = await storage.createAttendanceLog({
+            userId,
+            siteId,
+            checkInDate,
+            latitude: null,
+            longitude: null,
+            attendanceType: baseType,
+            source: "manual",
+          });
+          const updatedLog = await storage.updateAttendanceLog(log.id, {
+            checkOutTime: new Date(checkInDate)
+          });
+          return res.status(201).json(updatedLog);
+        }
+      }
+
       if (existingLog) {
         return res.status(400).json({ error: "해당 날짜에 이미 출근 기록이 있습니다" });
       }
@@ -1108,7 +1135,7 @@ export async function registerRoutes(
         checkInDate,
         latitude: null,
         longitude: null,
-        attendanceType: resolvedType,
+        attendanceType: baseType,
         source: "manual",
       });
 
@@ -1136,10 +1163,18 @@ export async function registerRoutes(
         return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
       }
 
-      const updateData: any = { attendanceType };
+      const baseType = attendanceType === "normal_out" ? "normal" : attendanceType;
+      const updateData: any = { attendanceType: baseType };
       if (existingLog.source !== "vacation") {
         updateData.source = "manual";
       }
+
+      if (attendanceType === "normal_out") {
+        updateData.checkOutTime = new Date(checkInDate);
+      } else if (attendanceType === "normal") {
+        updateData.checkOutTime = null; // Reset to in_only if they switch back to just "출근(O)"
+      }
+
       const updated = await storage.updateAttendanceLog(existingLog.id, updateData);
       res.json(updated);
     } catch (error) {

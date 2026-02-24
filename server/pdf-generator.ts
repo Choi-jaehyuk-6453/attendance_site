@@ -101,7 +101,7 @@ export async function generateAttendancePdf(options: GeneratePdfOptions): Promis
         const monthString = format(selectedMonth, "yyyy년 M월", { locale: ko });
 
         doc.fontSize(14).text(
-          `${companyName} 근무자 출근기록부 - ${monthString}`,
+          `${companyName} 근무자 출퇴근기록부 - ${monthString}`,
           30,
           30
         );

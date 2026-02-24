@@ -72,7 +72,9 @@ export default function SiteManagerAttendance() {
     // ============ Export Helpers ============
     const getAttendanceSymbol = (info: any) => {
         switch (info.type) {
-            case "normal": return "O";
+            case "normal":
+                if (info.status === "in_only") return "O_in";
+                return "O_out";
             case "annual": return "연";
             case "half_day": return "반";
             case "sick": return "병";
@@ -280,8 +282,8 @@ export default function SiteManagerAttendance() {
         try {
             const { header, data } = getPdfExportData();
             const todayStr = format(getKSTNow(), "yyyy-MM-dd");
-            const title = `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`;
-            const fileName = `${siteName}_출근기록부(${todayStr})`;
+            const title = `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부`;
+            const fileName = `${siteName}_출퇴근기록부(${todayStr})`;
 
             await exportToPDF(title, header, data, fileName);
             toast({ title: "PDF 다운로드 완료" });
@@ -295,7 +297,7 @@ export default function SiteManagerAttendance() {
         try {
             const { header, data } = getExcelExportData();
             const todayStr = format(getKSTNow(), "yyyy-MM-dd");
-            const fileName = `${siteName}_출근기록부(${todayStr})`;
+            const fileName = `${siteName}_출퇴근기록부(${todayStr})`;
 
             exportToExcel(header, data, fileName);
             toast({ title: "Excel 다운로드 완료" });
@@ -316,16 +318,16 @@ export default function SiteManagerAttendance() {
             const { header, data } = getPdfExportData();
 
             const todayStr = format(getKSTNow(), "yyyy-MM-dd");
-            const title = `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`;
-            const fileName = `${siteName}_출근기록부(${todayStr})`;
+            const title = `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부`;
+            const fileName = `${siteName}_출퇴근기록부(${todayStr})`;
 
             const pdfBlob = await exportToPDF(title, header, data, fileName, true) as Blob;
 
-            const html = `<p>${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부(PDF)를 첨부하여 보내드립니다.</p>`;
+            const html = `<p>${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부(PDF)를 첨부하여 보내드립니다.</p>`;
 
             await sendEmailWithAttachment(
                 emailTo,
-                `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출근기록부`,
+                `${siteName} ${format(selectedMonth, "yyyy년 MM월")} 출퇴근기록부`,
                 html,
                 { filename: `${fileName}.pdf`, content: pdfBlob }
             );
@@ -368,7 +370,7 @@ export default function SiteManagerAttendance() {
     return (
         <div className="p-6 space-y-6">
             <div>
-                <h1 className="text-2xl font-bold">출근기록부</h1>
+                <h1 className="text-2xl font-bold">출퇴근기록부</h1>
                 <p className="text-muted-foreground">현장 근로자 출근 현황을 확인하세요</p>
             </div>
 
@@ -411,7 +413,7 @@ export default function SiteManagerAttendance() {
                     <DialogHeader>
                         <DialogTitle>이메일 발송</DialogTitle>
                         <DialogDescription>
-                            현재 조회된 출근기록부를 이메일로 전송합니다.
+                            현재 조회된 출퇴근기록부를 이메일로 전송합니다.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-4">

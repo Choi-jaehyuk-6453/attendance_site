@@ -111,7 +111,11 @@ export async function exportToPDF(title: string, columns: string[], data: any[][
 
                 // Attendance symbol colors (non-group rows, day columns only)
                 if (colIndex > 0) {
-                    if (text === 'O' || text === '연') {
+                    if (text === 'O_in') {
+                        cellData.cell.text = ['O'];
+                        cellData.cell.styles.textColor = [239, 68, 68]; // Red
+                    } else if (text === 'O_out' || text === 'O' || text === '연') {
+                        if (text === 'O_out') cellData.cell.text = ['O'];
                         cellData.cell.styles.textColor = [37, 99, 235]; // Blue
                     } else if (text === '반') {
                         cellData.cell.styles.textColor = [8, 145, 178]; // Cyan

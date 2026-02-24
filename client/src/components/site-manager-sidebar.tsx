@@ -36,7 +36,7 @@ const menuItems = [
         icon: Users,
     },
     {
-        title: "출근기록부",
+        title: "출퇴근기록부",
         url: "/site-manager/attendance",
         icon: ClipboardList,
     },

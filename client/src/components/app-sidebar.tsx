@@ -25,7 +25,7 @@ import { useAuth } from "@/lib/auth";
 
 const attendanceMenuItems = [
   {
-    title: "출근기록부",
+    title: "출퇴근기록부",
     url: "/hq-admin",
     icon: LayoutDashboard,
   },
