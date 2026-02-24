@@ -17,7 +17,7 @@ import type { AttendanceLog, Site } from "@shared/schema";
 export default function WorkerHome() {
     const { user, logout } = useAuth();
     const { toast } = useToast();
-    const [showScanner, setShowScanner] = useState(false);
+    const [scannerMode, setScannerMode] = useState<"in" | "out" | null>(null);
     const today = getKSTToday();
     const monthStr = format(getKSTNow(), "yyyy-MM");
 
@@ -58,17 +58,18 @@ export default function WorkerHome() {
     });
 
     const checkInMutation = useMutation({
-        mutationFn: async (data: { siteId: string; checkInDate: string; latitude?: string; longitude?: string }) => {
+        mutationFn: async (data: { siteId: string; checkInDate: string; latitude?: string; longitude?: string; action: "in" | "out" }) => {
             const res = await apiRequest("POST", "/api/attendance/check-in", data);
             return res.json();
         },
-        onSuccess: (data) => {
+        onSuccess: (data, variables) => {
             queryClient.invalidateQueries({ queryKey: ["/api/attendance/today"] });
             queryClient.invalidateQueries({ queryKey: ["/api/attendance/user"] });
-            setShowScanner(false);
+            setScannerMode(null);
+            const actionText = variables.action === "out" ? "퇴근" : "출근";
             toast({
-                title: "출근 완료!",
-                description: `${data.siteName || "현장"}에 출근되었습니다.`,
+                title: `${actionText} 완료!`,
+                description: `${data.siteName || "현장"}에 ${actionText} 처리되었습니다.`,
             });
         },
         onError: (error: Error) => {
@@ -83,7 +84,20 @@ export default function WorkerHome() {
     const handleQrScan = (decodedText: string) => {
         try {
             const data = JSON.parse(decodedText);
+
+            // Allow backward compatibility: if action is missing, assume "in"
+            const scannedAction = data.action || "in";
+
             if (data.type === "attendance" && data.siteId) {
+                if (scannedAction !== scannerMode) {
+                    toast({
+                        variant: "destructive",
+                        title: "잘못된 QR코드",
+                        description: `${scannerMode === "in" ? "출근용" : "퇴근용"} QR 코드를 스캔해주세요.`,
+                    });
+                    return;
+                }
+
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         checkInMutation.mutate({
@@ -91,12 +105,14 @@ export default function WorkerHome() {
                             checkInDate: today,
                             latitude: String(position.coords.latitude),
                             longitude: String(position.coords.longitude),
+                            action: scannerMode as "in" | "out",
                         });
                     },
                     () => {
                         checkInMutation.mutate({
                             siteId: data.siteId,
                             checkInDate: today,
+                            action: scannerMode as "in" | "out",
                         });
                     }
                 );
@@ -104,7 +120,7 @@ export default function WorkerHome() {
                 toast({
                     variant: "destructive",
                     title: "잘못된 QR코드",
-                    description: "출근용 QR 코드가 아닙니다.",
+                    description: "출퇴근용 QR 코드가 아닙니다.",
                 });
             }
         } catch {
@@ -117,7 +133,7 @@ export default function WorkerHome() {
     };
 
     useEffect(() => {
-        if (!showScanner) return;
+        if (!scannerMode) return;
 
         const html5QrCode = new Html5Qrcode("qr-reader");
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
@@ -140,7 +156,7 @@ export default function WorkerHome() {
                 title: "카메라 시작 실패",
                 description: "권한을 확인하거나 뒤로가기 후 다시 시도해주세요."
             });
-            setShowScanner(false);
+            setScannerMode(null);
         });
 
         return () => {
@@ -149,7 +165,7 @@ export default function WorkerHome() {
             }
             html5QrCode.clear();
         };
-    }, [showScanner]);
+    }, [scannerMode]);
 
     const attendanceStats = useMemo(() => {
         const normalDays = monthLogs.filter(l => l.attendanceType === "normal").length;
@@ -218,23 +234,60 @@ export default function WorkerHome() {
                             )}
                         </div>
 
-                        {isCheckedIn && todayLog?.checkInTime ? (
-                            <div className="text-center py-4">
-                                <p className="text-4xl font-bold text-primary">
-                                    {format(new Date(todayLog.checkInTime), "HH:mm")}
-                                </p>
-                                <p className="text-sm text-muted-foreground mt-1">출근 시간</p>
+                        {isCheckedIn && todayLog?.checkOutTime ? (
+                            <div className="flex flex-col gap-4 py-4">
+                                <div className="text-center">
+                                    <p className="text-4xl font-bold text-primary">
+                                        {format(new Date(todayLog.checkInTime), "HH:mm")}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground mt-1">출근 시간</p>
+                                </div>
+                                <div className="text-center border-t border-border pt-4">
+                                    <p className="text-3xl font-bold text-blue-600">
+                                        {format(new Date(todayLog.checkOutTime), "HH:mm")}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground mt-1">퇴근 시간</p>
+                                </div>
                             </div>
-                        ) : (
-                            <div className="text-center py-4">
+                        ) : isCheckedIn && todayLog?.checkInTime ? (
+                            <div className="flex flex-col gap-4 py-4">
+                                <div className="text-center">
+                                    <p className="text-4xl font-bold text-primary">
+                                        {format(new Date(todayLog.checkInTime), "HH:mm")}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground mt-1">출근 시간</p>
+                                </div>
                                 <Button
                                     size="lg"
                                     className="w-full h-16 text-lg"
-                                    onClick={() => setShowScanner(true)}
+                                    onClick={() => setScannerMode("out")}
+                                    disabled={checkInMutation.isPending}
+                                >
+                                    <QrCode className="h-6 w-6 mr-3" />
+                                    {checkInMutation.isPending ? "처리중..." : "QR 스캔으로 퇴근하기"}
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-4 py-4 text-center">
+                                <Button
+                                    size="lg"
+                                    className="w-full h-16 text-lg"
+                                    onClick={() => setScannerMode("in")}
                                     disabled={checkInMutation.isPending}
                                 >
                                     <QrCode className="h-6 w-6 mr-3" />
                                     {checkInMutation.isPending ? "처리중..." : "QR 스캔으로 출근하기"}
+                                </Button>
+                                {/* Fallback for overnight shift checkout if not clocked out */}
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full h-12 text-md"
+                                    onClick={() => setScannerMode("out")}
+                                    disabled={checkInMutation.isPending}
+                                >
+                                    <QrCode className="h-5 w-5 mr-3" />
+                                    어제자 퇴근 스캔 (이전 출근 닫기)
                                 </Button>
                             </div>
                         )}
@@ -242,20 +295,20 @@ export default function WorkerHome() {
                 </Card>
 
                 {/* QR Scanner */}
-                {showScanner && (
-                    <Card className="shadow-lg">
-                        <CardHeader>
+                {scannerMode && (
+                    <Card className="shadow-lg border-2 border-primary">
+                        <CardHeader className="bg-muted/50 pb-4">
                             <CardTitle className="text-base flex items-center gap-2">
                                 <QrCode className="h-5 w-5" />
-                                QR 코드 스캔
+                                {scannerMode === "in" ? "출근용 QR 스캔" : "퇴근용 QR 스캔"}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div id="qr-reader" className="w-full" />
+                        <CardContent className="pt-4">
+                            <div id="qr-reader" className="w-full rounded-lg overflow-hidden" />
                             <Button
                                 variant="outline"
                                 className="w-full mt-4"
-                                onClick={() => setShowScanner(false)}
+                                onClick={() => setScannerMode(null)}
                             >
                                 취소
                             </Button>

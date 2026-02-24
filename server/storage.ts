@@ -54,6 +54,7 @@ export interface IStorage {
   getAttendanceLogsByUser(userId: string, startDate?: string, endDate?: string): Promise<AttendanceLog[]>;
   getTodayAttendanceLog(userId: string, date: string): Promise<AttendanceLog | undefined>;
   getAttendanceLogByUserAndDate(userId: string, date: string): Promise<AttendanceLog | undefined>;
+  getLatestIncompleteAttendanceLog(userId: string): Promise<AttendanceLog | undefined>;
   createAttendanceLog(log: InsertAttendanceLog): Promise<AttendanceLog>;
   updateAttendanceLog(id: string, data: Partial<AttendanceLog>): Promise<AttendanceLog | undefined>;
   deleteAttendanceLog(id: string): Promise<void>;
@@ -247,6 +248,17 @@ export class DatabaseStorage implements IStorage {
     const [log] = await db.select().from(attendanceLogs).where(
       and(eq(attendanceLogs.userId, userId), eq(attendanceLogs.checkInDate, date))
     );
+    return log || undefined;
+  }
+
+  async getLatestIncompleteAttendanceLog(userId: string): Promise<AttendanceLog | undefined> {
+    const [log] = await db.select().from(attendanceLogs).where(
+      and(
+        eq(attendanceLogs.userId, userId),
+        sql`${attendanceLogs.checkOutTime} IS NULL`,
+        eq(attendanceLogs.source, "qr") // Only QR check-ins need QR check-outs typically, but fine without it too. Let's just use checkOutTime IS NULL
+      )
+    ).orderBy(sql`${attendanceLogs.checkInTime} DESC`).limit(1);
     return log || undefined;
   }
 

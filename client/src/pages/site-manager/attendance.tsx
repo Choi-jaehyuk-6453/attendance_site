@@ -70,35 +70,40 @@ export default function SiteManagerAttendance() {
         : "현장";
 
     // ============ Export Helpers ============
-    const getAttendanceSymbol = (log: AttendanceLog) => {
-        switch (log.attendanceType) {
+    const getAttendanceSymbol = (info: any) => {
+        switch (info.type) {
             case "normal": return "O";
             case "annual": return "연";
             case "half_day": return "반";
             case "sick": return "병";
             case "family_event": return "경";
             case "other": return "기";
-            default: return log.attendanceType;
+            default: return info.type;
         }
     };
 
-    const getAttendanceExcelValue = (log: AttendanceLog) => {
-        if (log.attendanceType === "normal") {
+    const getAttendanceExcelValue = (info: any) => {
+        if (info.type === "normal") {
             let timeStr = "";
-            if (log.checkInTime) {
-                const d = new Date(log.checkInTime);
-                const hours = String(d.getHours()).padStart(2, "0");
-                const minutes = String(d.getMinutes()).padStart(2, "0");
-                timeStr = `${hours}:${minutes}`;
+            if (info.status === "in_only" && info.checkInTime) {
+                const d = new Date(info.checkInTime);
+                timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            } else if (info.status === "out_only" && info.checkOutTime) {
+                const d = new Date(info.checkOutTime);
+                timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            } else if (info.status === "completed" && info.checkInTime && info.checkOutTime) {
+                const inD = new Date(info.checkInTime);
+                const outD = new Date(info.checkOutTime);
+                timeStr = `${String(inD.getHours()).padStart(2, "0")}:${String(inD.getMinutes()).padStart(2, "0")}\n${String(outD.getHours()).padStart(2, "0")}:${String(outD.getMinutes()).padStart(2, "0")}`;
             } else {
                 timeStr = "O";
             }
-            if (log.source === "manual") {
+            if (info.source === "manual") {
                 timeStr += "(수동)";
             }
             return timeStr;
         }
-        return getAttendanceSymbol(log);
+        return getAttendanceSymbol(info);
     };
 
     const getFilteredUsersAndMap = () => {
@@ -109,12 +114,32 @@ export default function SiteManagerAttendance() {
             .filter(u => u.siteId === user?.siteId)
             .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
-        const attendanceMap = new Map<string, Map<string, AttendanceLog>>();
+        const attendanceMap = new Map<string, Map<string, any>>();
         attendanceLogs.forEach(log => {
-            if (!attendanceMap.has(log.userId)) {
-                attendanceMap.set(log.userId, new Map());
+            const inDate = new Date(log.checkInDate);
+            const outDate = log.checkOutTime ? new Date(log.checkOutTime) : null;
+            const inDateStr = format(inDate, "yyyy-MM-dd");
+            const outDateStr = outDate ? format(outDate, "yyyy-MM-dd") : null;
+
+            const key = log.userId;
+            if (!attendanceMap.has(key)) {
+                attendanceMap.set(key, new Map());
             }
-            attendanceMap.get(log.userId)?.set(log.checkInDate, log);
+
+            if (log.attendanceType === "normal") {
+                const isSameDay = outDateStr && inDateStr === outDateStr;
+
+                if (!outDateStr) {
+                    attendanceMap.get(key)?.set(inDateStr, { type: "normal", status: "in_only", checkInTime: log.checkInTime, checkOutTime: null, source: log.source });
+                } else if (isSameDay) {
+                    attendanceMap.get(key)?.set(inDateStr, { type: "normal", status: "completed", checkInTime: log.checkInTime, checkOutTime: log.checkOutTime, source: log.source });
+                } else {
+                    attendanceMap.get(key)?.set(inDateStr, { type: "normal", status: "in_only", checkInTime: log.checkInTime, checkOutTime: null, source: log.source });
+                    attendanceMap.get(key)?.set(outDateStr, { type: "normal", status: "out_only", checkInTime: null, checkOutTime: log.checkOutTime, source: log.source });
+                }
+            } else {
+                attendanceMap.get(key)?.set(inDateStr, { type: log.attendanceType || "normal", status: "", checkInTime: null, checkOutTime: null, source: log.source });
+            }
         });
 
         return { days, siteUsers, attendanceMap };

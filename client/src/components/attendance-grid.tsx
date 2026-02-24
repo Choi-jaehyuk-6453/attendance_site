@@ -118,35 +118,69 @@ export function AttendanceGrid(props: AttendanceGridProps) {
 
   // Map of userId -> Map of day -> attendance info
   const attendanceMap = useMemo(() => {
-    const map = new Map<string, Map<number, { type: string }>>();
+    const map = new Map<string, Map<number, { type: string; status?: string }>>();
     attendanceLogs.forEach((log) => {
       if (selectedSiteId && log.siteId !== selectedSiteId) return;
 
-      const logDate = new Date(log.checkInDate);
+      const inDate = new Date(log.checkInDate);
+      const outDate = log.checkOutTime ? new Date(log.checkOutTime) : null;
       const monthStart = startOfMonth(selectedMonth);
-      if (
-        logDate.getFullYear() === monthStart.getFullYear() &&
-        logDate.getMonth() === monthStart.getMonth()
-      ) {
-        const key = log.userId;
-        if (!map.has(key)) {
-          map.set(key, new Map());
+
+      const inMonthMatch =
+        inDate.getFullYear() === monthStart.getFullYear() &&
+        inDate.getMonth() === monthStart.getMonth();
+      const outMonthMatch =
+        outDate &&
+        outDate.getFullYear() === monthStart.getFullYear() &&
+        outDate.getMonth() === monthStart.getMonth();
+
+      const key = log.userId;
+      if (!map.has(key)) {
+        map.set(key, new Map());
+      }
+
+      const attendanceType = log.attendanceType || "normal";
+
+      if (attendanceType === "normal") {
+        const isSameDay = outDate && format(inDate, "yyyy-MM-dd") === format(outDate, "yyyy-MM-dd");
+
+        if (inMonthMatch) {
+          const inDay = getDate(inDate);
+          if (!outDate) {
+            map.get(key)!.set(inDay, { type: "normal", status: "in_only" });
+          } else if (isSameDay) {
+            map.get(key)!.set(inDay, { type: "normal", status: "completed" });
+          } else {
+            map.get(key)!.set(inDay, { type: "normal", status: "in_only" });
+          }
         }
-        const attendanceType = log.attendanceType || "normal";
-        map.get(key)!.set(getDate(logDate), { type: attendanceType });
+
+        if (outMonthMatch && !isSameDay) {
+          const outDay = getDate(outDate);
+          map.get(key)!.set(outDay, { type: "normal", status: "out_only" });
+        }
+      } else {
+        if (inMonthMatch) {
+          map.get(key)!.set(getDate(inDate), { type: attendanceType });
+        }
       }
     });
     return map;
   }, [attendanceLogs, selectedMonth, selectedSiteId]);
 
-  const getAttendanceDisplay = (type: string) => {
+  const getAttendanceDisplay = (type: string, status?: string) => {
     switch (type) {
       case "annual": return { text: "연", color: "text-blue-600" };
       case "half_day": return { text: "반", color: "text-cyan-600" };
       case "sick": return { text: "병", color: "text-orange-600" };
       case "family_event": return { text: "경", color: "text-purple-600" };
       case "other": return { text: "기", color: "text-gray-600" };
-      default: return { text: "O", color: "text-primary" };
+      case "normal":
+      default:
+        if (status === "in_only") return { text: "O", color: "text-red-500" };
+        if (status === "out_only") return { text: "O", color: "text-blue-500" };
+        if (status === "completed") return { text: "O", color: "text-blue-500" };
+        return { text: "O", color: "text-primary" };
     }
   };
 
@@ -203,7 +237,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
     },
   });
 
-  const handleCellClick = (user: User, day: number, attendanceInfo: { type: string } | undefined, siteId: string) => {
+  const handleCellClick = (user: User, day: number, attendanceInfo: { type: string; status?: string } | undefined, siteId: string) => {
     if (!isAdmin) return;
     if (!siteId && !attendanceInfo) {
       toast({
@@ -289,9 +323,9 @@ export function AttendanceGrid(props: AttendanceGridProps) {
     ? sites.find((s) => s.id === selectedSiteId)?.name || "전체 현장"
     : "전체 현장";
 
-  const renderAttendanceCell = (user: User, day: number, userAttendance: Map<number, { type: string }>, siteId: string) => {
+  const renderAttendanceCell = (user: User, day: number, userAttendance: Map<number, { type: string; status?: string }>, siteId: string) => {
     const attendance = userAttendance.get(day);
-    const display = attendance ? getAttendanceDisplay(attendance.type) : null;
+    const display = attendance ? getAttendanceDisplay(attendance.type, attendance.status) : null;
 
     if (isAdmin) {
       return (

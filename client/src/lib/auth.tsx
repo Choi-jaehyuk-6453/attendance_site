@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "@shared/schema";
+import { queryClient } from "./queryClient";
 
 type UserWithoutPassword = Omit<User, "password">;
 
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (userData: UserWithoutPassword) => {
+    queryClient.clear();
     setUser(userData);
     localStorage.setItem("user", JSON.stringify(userData));
   };
@@ -61,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore errors
     }
+    queryClient.clear();
     setUser(null);
     localStorage.removeItem("user");
   };

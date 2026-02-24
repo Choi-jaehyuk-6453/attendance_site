@@ -11,7 +11,8 @@ import type { Site } from "@shared/schema";
 
 function SiteQRCard({ site }: { site: Site }) {
     const { toast } = useToast();
-    const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+    const [qrDataUrlIn, setQrDataUrlIn] = useState<string | null>(null);
+    const [qrDataUrlOut, setQrDataUrlOut] = useState<string | null>(null);
 
     const generateMutation = useMutation({
         mutationFn: async () => {
@@ -27,16 +28,21 @@ function SiteQRCard({ site }: { site: Site }) {
     useEffect(() => {
         if (site.qrCode) {
             QRCode.toDataURL(site.qrCode, { width: 200, margin: 2 })
-                .then(setQrDataUrl)
+                .then(setQrDataUrlIn)
                 .catch(console.error);
         }
-    }, [site.qrCode]);
+        if (site.qrCodeOut) {
+            QRCode.toDataURL(site.qrCodeOut, { width: 200, margin: 2 })
+                .then(setQrDataUrlOut)
+                .catch(console.error);
+        }
+    }, [site.qrCode, site.qrCodeOut]);
 
-    const handleDownload = () => {
-        if (!qrDataUrl) return;
+    const handleDownload = (url: string | null, type: "in" | "out") => {
+        if (!url) return;
         const link = document.createElement("a");
-        link.download = `${site.name}_QR.png`;
-        link.href = qrDataUrl;
+        link.download = `${site.name}_${type === "in" ? "출근" : "퇴근"}_QR.png`;
+        link.href = url;
         link.click();
     };
 
@@ -49,30 +55,46 @@ function SiteQRCard({ site }: { site: Site }) {
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-4">
-                {site.qrCode && qrDataUrl ? (
-                    <>
-                        <img src={qrDataUrl} alt={`${site.name} QR`} className="w-48 h-48 rounded-lg" />
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={handleDownload}>
-                                <Download className="h-4 w-4 mr-1" />
-                                다운로드
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()}>
-                                <RefreshCw className="h-4 w-4 mr-1" />
-                                재생성
-                            </Button>
-                        </div>
-                    </>
-                ) : (
-                    <>
+                {(!site.qrCode || !site.qrCodeOut) ? (
+                    <div className="flex flex-col items-center gap-4 py-8">
                         <div className="w-48 h-48 rounded-lg bg-muted flex items-center justify-center">
                             <QrCode className="h-16 w-16 text-muted-foreground" />
                         </div>
                         <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
                             <QrCode className="h-4 w-4 mr-2" />
-                            QR코드 생성
+                            {generateMutation.isPending ? "생성 중..." : "QR코드 발급하기"}
                         </Button>
-                    </>
+                    </div>
+                ) : (
+                    <div className="flex flex-col md:flex-row gap-8 justify-center w-full">
+                        {/* IN QR */}
+                        <div className="flex flex-col items-center gap-2">
+                            <h3 className="font-semibold text-sm">출근용 QR</h3>
+                            {qrDataUrlIn && <img src={qrDataUrlIn} alt={`${site.name} 출근 QR`} className="w-40 h-40 rounded-lg border shadow-sm" />}
+                            <Button variant="outline" size="sm" onClick={() => handleDownload(qrDataUrlIn, "in")}>
+                                <Download className="h-4 w-4 mr-1" />
+                                다운로드
+                            </Button>
+                        </div>
+                        {/* OUT QR */}
+                        <div className="flex flex-col items-center gap-2">
+                            <h3 className="font-semibold text-sm text-blue-600">퇴근용 QR</h3>
+                            {qrDataUrlOut && <img src={qrDataUrlOut} alt={`${site.name} 퇴근 QR`} className="w-40 h-40 rounded-lg border shadow-sm border-blue-200" />}
+                            <Button variant="outline" size="sm" onClick={() => handleDownload(qrDataUrlOut, "out")}>
+                                <Download className="h-4 w-4 mr-1" />
+                                다운로드
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {site.qrCode && site.qrCodeOut && (
+                    <div className="border-t w-full pt-4 mt-2 flex justify-center">
+                        <Button variant="ghost" size="sm" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
+                            <RefreshCw className="h-4 w-4 mr-1" />
+                            전체 재발급
+                        </Button>
+                    </div>
                 )}
             </CardContent>
         </Card>

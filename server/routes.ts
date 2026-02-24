@@ -965,7 +965,7 @@ export async function registerRoutes(
 
   app.post("/api/attendance/check-in", requireAuth, async (req, res) => {
     try {
-      const { siteId, checkInDate, latitude, longitude } = req.body;
+      const { siteId, checkInDate, latitude, longitude, action = "in" } = req.body;
       const userId = req.session.userId!;
 
       if (!siteId || !checkInDate) {
@@ -1002,45 +1002,67 @@ export async function registerRoutes(
           req.session.userId = alternativeUser.id;
           req.session.role = "worker"; // Keep them as worker (masquerading)
 
-          // Proceed with logic using alternativeUser
-          const existingLog = await storage.getTodayAttendanceLog(alternativeUser.id, checkInDate);
-          if (existingLog) {
-            return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+          if (action === "out") {
+            const latestIncomplete = await storage.getLatestIncompleteAttendanceLog(alternativeUser.id);
+            if (!latestIncomplete) {
+              return res.status(400).json({ error: "퇴근 처리를 할 수 있는 이전 출근 기록이 없습니다." });
+            }
+            const updatedLog = await storage.updateAttendanceLog(latestIncomplete.id, {
+              checkOutTime: new Date()
+            });
+            return res.status(200).json({ ...updatedLog, siteName: site.name });
+          } else {
+            const existingLog = await storage.getTodayAttendanceLog(alternativeUser.id, checkInDate);
+            if (existingLog) {
+              return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+            }
+
+            const log = await storage.createAttendanceLog({
+              userId: alternativeUser.id,
+              siteId,
+              checkInDate,
+              latitude: latitude || null,
+              longitude: longitude || null,
+              source: "qr",
+            });
+
+            return res.status(201).json({ ...log, siteName: site.name });
           }
-
-          const log = await storage.createAttendanceLog({
-            userId: alternativeUser.id,
-            siteId,
-            checkInDate,
-            latitude: latitude || null,
-            longitude: longitude || null,
-            source: "qr",
-          });
-
-          return res.status(201).json({ ...log, siteName: site.name });
         }
 
         return res.status(400).json({ error: `본인 현장(${site.name})이 아닌 다른 현장의 QR 코드입니다.` });
       }
 
-      const existingLog = await storage.getTodayAttendanceLog(userId, checkInDate);
-      if (existingLog) {
-        return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+      if (action === "out") {
+        const latestIncomplete = await storage.getLatestIncompleteAttendanceLog(userId);
+        if (!latestIncomplete) {
+          return res.status(400).json({ error: "퇴근 처리를 할 수 있는 이전 출근 기록이 없습니다." });
+        }
+
+        const updatedLog = await storage.updateAttendanceLog(latestIncomplete.id, {
+          checkOutTime: new Date()
+        });
+        return res.status(200).json({ ...updatedLog, siteName: site.name });
+      } else {
+        const existingLog = await storage.getTodayAttendanceLog(userId, checkInDate);
+        if (existingLog) {
+          return res.status(400).json({ error: "오늘 이미 출근 처리되었습니다" });
+        }
+
+        const log = await storage.createAttendanceLog({
+          userId,
+          siteId,
+          checkInDate,
+          latitude: latitude || null,
+          longitude: longitude || null,
+          source: "qr",
+        });
+
+        res.status(201).json({ ...log, siteName: site.name });
       }
-
-      const log = await storage.createAttendanceLog({
-        userId,
-        siteId,
-        checkInDate,
-        latitude: latitude || null,
-        longitude: longitude || null,
-        source: "qr",
-      });
-
-      res.status(201).json({ ...log, siteName: site.name });
     } catch (error) {
       console.error("Check-in error:", error);
-      res.status(500).json({ error: "출근 처리 중 오류가 발생했습니다" });
+      res.status(500).json({ error: "출퇴근 처리 중 오류가 발생했습니다" });
     }
   });
 
@@ -1416,8 +1438,9 @@ export async function registerRoutes(
         return res.status(404).json({ error: "현장을 찾을 수 없습니다" });
       }
 
-      const qrData = JSON.stringify({ type: "attendance", siteId: id });
-      const updated = await storage.updateSite(id, { qrCode: qrData });
+      const qrDataIn = JSON.stringify({ action: "in", type: "attendance", siteId: id });
+      const qrDataOut = JSON.stringify({ action: "out", type: "attendance", siteId: id });
+      const updated = await storage.updateSite(id, { qrCode: qrDataIn, qrCodeOut: qrDataOut });
       res.json(updated);
     } catch (error) {
       console.error("Generate QR error:", error);
