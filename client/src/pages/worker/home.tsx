@@ -42,6 +42,17 @@ export default function WorkerHome() {
         enabled: !!user?.id,
     });
 
+    const { data: activeLog, isLoading: activeLoading } = useQuery<AttendanceLog | null>({
+        queryKey: ["/api/attendance/active", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const res = await fetch(`/api/attendance/active/${user.id}`);
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!user?.id,
+    });
+
     const { data: monthLogs = [] } = useQuery<AttendanceLog[]>({
         queryKey: ["/api/attendance/user", user?.id, monthStr],
         queryFn: async () => {
@@ -65,6 +76,7 @@ export default function WorkerHome() {
         onSuccess: (data, variables) => {
             queryClient.invalidateQueries({ queryKey: ["/api/attendance/today"] });
             queryClient.invalidateQueries({ queryKey: ["/api/attendance/user"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
             setScannerMode(null);
             const actionText = variables.action === "out" ? "퇴근" : "출근";
             toast({
@@ -75,8 +87,8 @@ export default function WorkerHome() {
         onError: (error: Error) => {
             toast({
                 variant: "destructive",
-                title: "출근 실패",
-                description: error.message || "출근 처리 중 오류가 발생했습니다.",
+                title: "출퇴근 처리 실패",
+                description: error.message || "오류가 발생했습니다.",
             });
         },
     });
@@ -84,19 +96,21 @@ export default function WorkerHome() {
     const handleQrScan = (decodedText: string) => {
         try {
             const data = JSON.parse(decodedText);
-
-            // Allow backward compatibility: if action is missing, assume "in"
             const scannedAction = data.action || "in";
 
             if (data.type === "attendance" && data.siteId) {
-                if (scannedAction !== scannerMode) {
+                // 스마트 처리: UI는 '출근' 상태인데(activeLog 없음), 퇴근 QR을 찍은 경우만 차단
+                if (scannerMode === "in" && scannedAction === "out") {
                     toast({
                         variant: "destructive",
                         title: "잘못된 QR코드",
-                        description: `${scannerMode === "in" ? "출근용" : "퇴근용"} QR 코드를 스캔해주세요.`,
+                        description: "활성화된 출근 기록이 없습니다. 먼저 출근용 QR을 스캔해주세요.",
                     });
                     return;
                 }
+
+                // UI가 '퇴근' 모드인데, 출근 QR을 찍은 경우는 스마트하게 어제 것을 열어두고 오늘 새로 출근하는 것으로 수용함.
+                const finalAction = scannedAction as "in" | "out";
 
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -105,14 +119,14 @@ export default function WorkerHome() {
                             checkInDate: today,
                             latitude: String(position.coords.latitude),
                             longitude: String(position.coords.longitude),
-                            action: scannerMode as "in" | "out",
+                            action: finalAction,
                         });
                     },
                     () => {
                         checkInMutation.mutate({
                             siteId: data.siteId,
                             checkInDate: today,
-                            action: scannerMode as "in" | "out",
+                            action: finalAction,
                         });
                     }
                 );
@@ -177,9 +191,10 @@ export default function WorkerHome() {
         ? sites.find(s => s.id === user.siteId)?.name || "미배정"
         : "미배정";
 
-    const isCheckedIn = !!todayLog;
+    const isCompletedToday = todayLog?.checkInTime && todayLog?.checkOutTime;
+    const isIncomplete = !!activeLog;
 
-    if (todayLoading) {
+    if (todayLoading || activeLoading) {
         return (
             <div className="min-h-screen bg-background p-4 space-y-4">
                 <Skeleton className="h-32" />
@@ -216,15 +231,20 @@ export default function WorkerHome() {
             </div>
 
             <div className="max-w-lg mx-auto p-4 space-y-4 -mt-4">
-                {/* Today's Status Card */}
+                {/* Status Card */}
                 <Card className="shadow-lg">
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="font-semibold text-lg">오늘 출근 현황</h2>
-                            {isCheckedIn ? (
+                            <h2 className="font-semibold text-lg">{isCompletedToday ? "오늘 출근 현황" : isIncomplete ? "진행중인 근무" : "출근 현황"}</h2>
+                            {isCompletedToday ? (
                                 <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                                     <CheckCircle className="h-3 w-3 mr-1" />
-                                    출근 완료
+                                    근무 완료
+                                </Badge>
+                            ) : isIncomplete ? (
+                                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    근무 중
                                 </Badge>
                             ) : (
                                 <Badge variant="outline" className="text-orange-600 border-orange-600">
@@ -234,32 +254,34 @@ export default function WorkerHome() {
                             )}
                         </div>
 
-                        {isCheckedIn && todayLog?.checkOutTime ? (
+                        {isCompletedToday ? (
                             <div className="flex flex-col gap-4 py-4">
                                 <div className="text-center">
                                     <p className="text-4xl font-bold text-primary">
-                                        {format(new Date(todayLog.checkInTime), "HH:mm")}
+                                        {format(new Date(todayLog.checkInTime!), "HH:mm")}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">출근 시간</p>
                                 </div>
                                 <div className="text-center border-t border-border pt-4">
                                     <p className="text-3xl font-bold text-blue-600">
-                                        {format(new Date(todayLog.checkOutTime), "HH:mm")}
+                                        {format(new Date(todayLog.checkOutTime!), "HH:mm")}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">퇴근 시간</p>
                                 </div>
                             </div>
-                        ) : isCheckedIn && todayLog?.checkInTime ? (
-                            <div className="flex flex-col gap-4 py-4">
-                                <div className="text-center">
+                        ) : isIncomplete && activeLog?.checkInTime ? (
+                            <div className="flex flex-col gap-4 py-4 text-center">
+                                <div>
                                     <p className="text-4xl font-bold text-primary">
-                                        {format(new Date(todayLog.checkInTime), "HH:mm")}
+                                        {format(new Date(activeLog.checkInTime), "HH:mm")}
                                     </p>
-                                    <p className="text-sm text-muted-foreground mt-1">출근 시간</p>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {format(new Date(activeLog.checkInTime), "MM/dd")} 출근
+                                    </p>
                                 </div>
                                 <Button
                                     size="lg"
-                                    className="w-full h-16 text-lg"
+                                    className="w-full h-16 text-lg mt-4 bg-blue-600 hover:bg-blue-700"
                                     onClick={() => setScannerMode("out")}
                                     disabled={checkInMutation.isPending}
                                 >
@@ -277,17 +299,6 @@ export default function WorkerHome() {
                                 >
                                     <QrCode className="h-6 w-6 mr-3" />
                                     {checkInMutation.isPending ? "처리중..." : "QR 스캔으로 출근하기"}
-                                </Button>
-                                {/* Fallback for overnight shift checkout if not clocked out */}
-                                <Button
-                                    variant="outline"
-                                    size="lg"
-                                    className="w-full h-12 text-md"
-                                    onClick={() => setScannerMode("out")}
-                                    disabled={checkInMutation.isPending}
-                                >
-                                    <QrCode className="h-5 w-5 mr-3" />
-                                    어제자 퇴근 스캔 (이전 출근 닫기)
                                 </Button>
                             </div>
                         )}

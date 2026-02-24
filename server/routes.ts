@@ -929,6 +929,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/attendance/active/:userId", requireAuth, async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      if (req.session.role === "worker" && req.session.userId !== userId) {
+        return res.status(403).json({ error: "접근 권한이 없습니다" });
+      }
+
+      const log = await storage.getLatestIncompleteAttendanceLog(userId);
+      res.json(log || null);
+    } catch (error) {
+      console.error("Get active attendance error:", error);
+      res.status(500).json({ error: "진행 중인 출근 기록을 불러오는데 실패했습니다" });
+    }
+  });
+
   app.get("/api/attendance/user/:userId", requireAuth, async (req, res) => {
     try {
       const { userId } = req.params;
