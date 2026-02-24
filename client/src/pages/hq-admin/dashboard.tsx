@@ -101,28 +101,36 @@ export default function HqAdminDashboard() {
     };
 
     // Helper: format attendance log with check-in time for Excel
-    const getAttendanceExcelValue = (info: any) => {
-        if (info.type === "normal") {
-            let timeStr = "";
-            if (info.status === "in_only" && info.checkInTime) {
-                const d = new Date(info.checkInTime);
-                timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-            } else if (info.status === "out_only" && info.checkOutTime) {
-                const d = new Date(info.checkOutTime);
-                timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-            } else if (info.status === "completed" && info.checkInTime && info.checkOutTime) {
-                const inD = new Date(info.checkInTime);
-                const outD = new Date(info.checkOutTime);
-                timeStr = `${String(inD.getHours()).padStart(2, "0")}:${String(inD.getMinutes()).padStart(2, "0")}\n${String(outD.getHours()).padStart(2, "0")}:${String(outD.getMinutes()).padStart(2, "0")}`;
+    const getAttendanceExcelValue = (infoArray: any[]) => {
+        if (!infoArray || infoArray.length === 0) return "";
+
+        let texts: string[] = [];
+        infoArray.forEach(info => {
+            if (info.type === "normal") {
+                let timeStr = "";
+                if (info.status === "in_only" && info.checkInTime) {
+                    const d = new Date(info.checkInTime);
+                    timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                } else if (info.status === "out_only" && info.checkOutTime) {
+                    const d = new Date(info.checkOutTime);
+                    timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                } else if (info.status === "completed" && info.checkInTime && info.checkOutTime) {
+                    const inD = new Date(info.checkInTime);
+                    const outD = new Date(info.checkOutTime);
+                    timeStr = `${String(inD.getHours()).padStart(2, "0")}:${String(inD.getMinutes()).padStart(2, "0")}\n${String(outD.getHours()).padStart(2, "0")}:${String(outD.getMinutes()).padStart(2, "0")}`;
+                } else {
+                    timeStr = "O";
+                }
+                if (info.source === "manual") {
+                    timeStr += "(수동)";
+                }
+                texts.push(timeStr);
             } else {
-                timeStr = "O";
+                texts.push(getAttendanceSymbol(info));
             }
-            if (info.source === "manual") {
-                timeStr += "(수동)";
-            }
-            return timeStr;
-        }
-        return getAttendanceSymbol(info);
+        });
+
+        return texts.join("\n");
     };
 
     const getFilteredUsersAndMap = () => {
@@ -140,7 +148,7 @@ export default function HqAdminDashboard() {
             return siteA.localeCompare(siteB) || a.name.localeCompare(b.name);
         });
 
-        const attendanceMap = new Map<string, Map<string, any>>();
+        const attendanceMap = new Map<string, Map<string, any[]>>();
         attendanceLogs.forEach(log => {
             const inDate = new Date(log.checkInDate);
             const outDate = log.checkOutTime ? new Date(log.checkOutTime) : null;
@@ -152,19 +160,27 @@ export default function HqAdminDashboard() {
                 attendanceMap.set(key, new Map());
             }
 
+            const userMap = attendanceMap.get(key)!;
+
+            const addLog = (dateStr: string, data: any) => {
+                const arr = userMap.get(dateStr) || [];
+                arr.push(data);
+                userMap.set(dateStr, arr);
+            };
+
             if (log.attendanceType === "normal") {
                 const isSameDay = outDateStr && inDateStr === outDateStr;
 
                 if (!outDateStr) {
-                    attendanceMap.get(key)?.set(inDateStr, { type: "normal", status: "in_only", checkInTime: log.checkInTime, checkOutTime: null, source: log.source });
+                    addLog(inDateStr, { type: "normal", status: "in_only", checkInTime: log.checkInTime, checkOutTime: null, source: log.source });
                 } else if (isSameDay) {
-                    attendanceMap.get(key)?.set(inDateStr, { type: "normal", status: "completed", checkInTime: log.checkInTime, checkOutTime: log.checkOutTime, source: log.source });
+                    addLog(inDateStr, { type: "normal", status: "completed", checkInTime: log.checkInTime, checkOutTime: log.checkOutTime, source: log.source });
                 } else {
-                    attendanceMap.get(key)?.set(inDateStr, { type: "normal", status: "in_only", checkInTime: log.checkInTime, checkOutTime: null, source: log.source });
-                    attendanceMap.get(key)?.set(outDateStr, { type: "normal", status: "out_only", checkInTime: null, checkOutTime: log.checkOutTime, source: log.source });
+                    addLog(inDateStr, { type: "normal", status: "in_only", checkInTime: log.checkInTime, checkOutTime: null, source: log.source });
+                    addLog(outDateStr, { type: "normal", status: "out_only", checkInTime: null, checkOutTime: log.checkOutTime, source: log.source });
                 }
             } else {
-                attendanceMap.get(key)?.set(inDateStr, { type: log.attendanceType || "normal", status: "", checkInTime: null, checkOutTime: null, source: log.source });
+                addLog(inDateStr, { type: log.attendanceType || "normal", status: "", checkInTime: null, checkOutTime: null, source: log.source });
             }
         });
 
@@ -211,9 +227,9 @@ export default function HqAdminDashboard() {
                     const userLogs = attendanceMap.get(u.id);
                     const attendanceRow = days.map(day => {
                         const dateStr = format(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), day), "yyyy-MM-dd");
-                        const log = userLogs?.get(dateStr);
-                        if (!log) return "";
-                        return getAttendanceSymbol(log);
+                        const logs = userLogs?.get(dateStr);
+                        if (!logs || logs.length === 0) return "";
+                        return getAttendanceSymbol(logs[0]);
                     });
                     const nameDisplay = u.jobTitle ? `  ${u.name} (${u.jobTitle})` : `  ${u.name}`;
                     data.push([nameDisplay, ...attendanceRow]);
@@ -227,9 +243,9 @@ export default function HqAdminDashboard() {
                     const userLogs = attendanceMap.get(u.id);
                     const attendanceRow = days.map(day => {
                         const dateStr = format(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), day), "yyyy-MM-dd");
-                        const log = userLogs?.get(dateStr);
-                        if (!log) return "";
-                        return getAttendanceSymbol(log);
+                        const logs = userLogs?.get(dateStr);
+                        if (!logs || logs.length === 0) return "";
+                        return getAttendanceSymbol(logs[0]);
                     });
                     const nameDisplay = u.jobTitle ? `  ${u.name} (${u.jobTitle})` : `  ${u.name}`;
                     data.push([nameDisplay, ...attendanceRow]);
@@ -256,9 +272,9 @@ export default function HqAdminDashboard() {
                         const userLogs = attendanceMap.get(u.id);
                         const attendanceRow = days.map(day => {
                             const dateStr = format(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), day), "yyyy-MM-dd");
-                            const log = userLogs?.get(dateStr);
-                            if (!log) return "";
-                            return getAttendanceSymbol(log);
+                            const logs = userLogs?.get(dateStr);
+                            if (!logs || logs.length === 0) return "";
+                            return getAttendanceSymbol(logs[0]);
                         });
                         const nameDisplay = u.jobTitle ? `  ${u.name} (${u.jobTitle})` : `  ${u.name}`;
                         data.push([nameDisplay, ...attendanceRow]);
@@ -280,9 +296,9 @@ export default function HqAdminDashboard() {
             const userLogs = attendanceMap.get(u.id);
             const attendanceRow = days.map(day => {
                 const dateStr = format(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), day), "yyyy-MM-dd");
-                const log = userLogs?.get(dateStr);
-                if (!log) return "";
-                return getAttendanceExcelValue(log);
+                const logs = userLogs?.get(dateStr);
+                if (!logs || logs.length === 0) return "";
+                return getAttendanceExcelValue(logs);
             });
             return [affiliation, u.name, u.jobTitle || "-", ...attendanceRow];
         };
