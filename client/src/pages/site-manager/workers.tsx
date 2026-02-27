@@ -400,14 +400,36 @@ export default function SiteManagerWorkers() {
                 </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
                 <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)} className="w-[400px]">
                     <TabsList>
                         <TabsTrigger value="active">재직자</TabsTrigger>
                         <TabsTrigger value="resigned">퇴사자</TabsTrigger>
                     </TabsList>
                 </Tabs>
-                <div className="text-sm text-muted-foreground">총 {filteredUsers.length}명</div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
+                        <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="조직 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">전체 조직</SelectItem>
+                            <SelectItem value="none">미배치(조직 없음)</SelectItem>
+                            {departments.map(dept => (
+                                <SelectItem key={dept.id} value={String(dept.id)}>{dept.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Input
+                        placeholder="이름 검색"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-[200px]"
+                    />
+                    <div className="text-sm text-muted-foreground ml-2">총 {filteredUsers.length}명</div>
+                </div>
             </div>
 
             <Table>
