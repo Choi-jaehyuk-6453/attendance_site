@@ -222,7 +222,7 @@ export default function HqAdminUsers() {
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => {
-                                                        if (confirm(`${user.name} 님을 정말 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다.`)) {
+                                                        if (confirm(`${user.name} 님을 정말 삭제하시겠습니까?\n삭제 시 비활성화 처리되며, 과거 출퇴근 기록은 보존됩니다.`)) {
                                                             deleteUserMutation.mutate(user.id);
                                                         }
                                                     }}

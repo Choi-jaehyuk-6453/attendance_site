@@ -1,0 +1,7 @@
+node_modules
+.env
+.env.*
+mirae_backup.zip
+font.zip
+.git
+dev.log

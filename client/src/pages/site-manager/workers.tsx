@@ -40,6 +40,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Upload, Download, Users, UserX, UserCheck, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { User, Department } from "@shared/schema";
@@ -73,8 +74,14 @@ export default function SiteManagerWorkers() {
         enabled: !!user?.siteId,
     });
 
+    // Filter states for worker status
+    const [statusFilter, setStatusFilter] = useState<"active" | "resigned">("active");
+
     // Show all site users (workers + site_managers)
     const allSiteUsers = workers.filter(w => w.role === "worker" || w.role === "site_manager");
+
+    // Filtered by status
+    const filteredUsers = allSiteUsers.filter(w => statusFilter === "active" ? w.isActive : !w.isActive);
 
     const createWorkerMutation = useMutation({
         mutationFn: async (data: any) => {
@@ -342,7 +349,15 @@ export default function SiteManagerWorkers() {
                 </div>
             </div>
 
-            <div className="text-sm text-muted-foreground">총 {allSiteUsers.length}명</div>
+            <div className="flex items-center justify-between">
+                <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)} className="w-[400px]">
+                    <TabsList>
+                        <TabsTrigger value="active">재직자</TabsTrigger>
+                        <TabsTrigger value="resigned">퇴사자</TabsTrigger>
+                    </TabsList>
+                </Tabs>
+                <div className="text-sm text-muted-foreground">총 {filteredUsers.length}명</div>
+            </div>
 
             <Table>
                 <TableHeader>
@@ -358,17 +373,19 @@ export default function SiteManagerWorkers() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {allSiteUsers.length === 0 ? (
+                    {filteredUsers.length === 0 ? (
                         <TableRow>
                             <TableCell colSpan={8} className="text-center py-12">
                                 <div className="flex flex-col items-center gap-2">
                                     <Users className="h-8 w-8 text-muted-foreground" />
-                                    <p className="text-muted-foreground">등록된 근로자가 없습니다</p>
+                                    <p className="text-muted-foreground">
+                                        {statusFilter === "active" ? "등록된 근무자가 없습니다" : "퇴사한 인원이 없습니다"}
+                                    </p>
                                 </div>
                             </TableCell>
                         </TableRow>
                     ) : (
-                        allSiteUsers.map((worker) => (
+                        filteredUsers.map((worker) => (
                             <TableRow key={worker.id}>
                                 <TableCell className="font-medium">{worker.name}</TableCell>
                                 <TableCell>
@@ -386,7 +403,7 @@ export default function SiteManagerWorkers() {
                                     {worker.isActive ? (
                                         <Badge variant="outline" className="text-green-600 border-green-600">활성</Badge>
                                     ) : (
-                                        <Badge variant="outline" className="text-red-600 border-red-600">비활성</Badge>
+                                        <Badge variant="outline" className="text-red-600 border-red-600 bg-red-50">퇴사</Badge>
                                     )}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -407,7 +424,7 @@ export default function SiteManagerWorkers() {
                                                 variant="ghost"
                                                 size="icon"
                                                 onClick={() => {
-                                                    if (confirm(`${worker.name}을(를) 삭제하시겠습니까?\n출근 기록도 함께 삭제됩니다.`)) {
+                                                    if (confirm(`${worker.name}을(를) 정말 삭제하시겠습니까?\\n삭제 시 비활성화 처리되며, 기록은 보존됩니다.`)) {
                                                         deleteWorkerMutation.mutate(worker.id);
                                                     }
                                                 }}

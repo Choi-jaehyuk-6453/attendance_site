@@ -117,9 +117,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteUser(id: string): Promise<void> {
-    await db.delete(attendanceLogs).where(eq(attendanceLogs.userId, id));
-    await db.delete(vacationRequests).where(eq(vacationRequests.userId, id));
-    await db.delete(users).where(eq(users.id, id));
+    const today = new Date().toISOString().split("T")[0];
+    await db.update(users).set({ isActive: false, resignedDate: today }).where(eq(users.id, id));
   }
 
   async findUserByNamePhoneAndSite(name: string, phone: string | null, siteId: string): Promise<User | undefined> {

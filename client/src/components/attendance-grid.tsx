@@ -77,11 +77,22 @@ export function AttendanceGrid(props: AttendanceGridProps) {
       }
     });
 
-    return users.filter((u) =>
-      (u.role === "worker" || u.role === "site_manager") &&
-      !u.isActive &&
-      userIdsWithAttendance.has(u.id)
-    );
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+
+    return users.filter((u) => {
+      if ((u.role !== "worker" && u.role !== "site_manager") || u.isActive) return false;
+
+      // Condition 1: User has attendance logs in the selected month
+      if (userIdsWithAttendance.has(u.id)) return true;
+
+      // Condition 2: User's resignedDate is in the selected month or later
+      if (u.resignedDate) {
+        const resignedDate = new Date(u.resignedDate);
+        if (resignedDate >= monthStart) return true;
+      }
+
+      return false;
+    });
   }, [users, attendanceLogs, selectedMonth, selectedSiteId]);
 
   const filteredUsers = [...activeUsers, ...usersWithAttendanceInMonth];
@@ -175,6 +186,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
       case "sick": return { text: "병", color: "text-orange-600" };
       case "family_event": return { text: "경", color: "text-purple-600" };
       case "other": return { text: "기", color: "text-gray-600" };
+      case "resigned": return { text: "퇴", color: "text-red-700 font-bold bg-red-100 rounded px-1" };
       case "normal":
       default:
         if (status === "in_only") return { text: "O", color: "text-red-500" };
@@ -192,6 +204,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
     { value: "sick", label: "병가 (병)" },
     { value: "family_event", label: "경조사 (경)" },
     { value: "other", label: "기타 (기)" },
+    { value: "resigned", label: "퇴사 (퇴) - 선택 시 계정 비활성화" },
   ];
 
   const addAttendanceMutation = useMutation({
@@ -385,6 +398,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
             <span className="flex items-center gap-1"><span className="font-bold text-orange-600">병</span> 병가</span>
             <span className="flex items-center gap-1"><span className="font-bold text-purple-600">경</span> 경조사</span>
             <span className="flex items-center gap-1"><span className="font-bold text-gray-600">기</span> 기타</span>
+            <span className="flex items-center gap-1"><span className="font-bold text-red-700 bg-red-100 px-0.5">퇴</span> 퇴사</span>
           </div>
         </div>
 

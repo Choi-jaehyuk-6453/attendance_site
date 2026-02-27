@@ -1082,7 +1082,7 @@ export async function registerRoutes(
     }
   });
 
-  const validAttendanceTypes = ["normal", "normal_out", "annual", "half_day", "sick", "family_event", "other"] as const;
+  const validAttendanceTypes = ["normal", "normal_out", "annual", "half_day", "sick", "family_event", "other", "resigned"] as const;
 
   app.post("/api/admin/attendance", requireSiteManagerOrAdmin, async (req, res) => {
     try {
@@ -1098,6 +1098,14 @@ export async function registerRoutes(
       }
 
       const baseType = resolvedType === "normal_out" ? "normal" : resolvedType;
+
+      if (resolvedType === "resigned") {
+        await storage.updateUser(userId, {
+          isActive: false,
+          resignedDate: checkInDate,
+        });
+      }
+
       const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
 
       if (resolvedType === "normal_out") {
@@ -1159,6 +1167,14 @@ export async function registerRoutes(
       }
 
       const existingLog = await storage.getAttendanceLogByUserAndDate(userId, checkInDate);
+
+      if (attendanceType === "resigned") {
+        await storage.updateUser(userId, {
+          isActive: false,
+          resignedDate: checkInDate,
+        });
+      }
+
       if (!existingLog) {
         return res.status(404).json({ error: "해당 날짜의 출근 기록을 찾을 수 없습니다" });
       }

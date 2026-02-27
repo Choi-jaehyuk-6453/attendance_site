@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   departmentId: varchar("department_id"),
   jobTitle: text("job_title"),
   hireDate: date("hire_date"),
+  resignedDate: date("resigned_date"),
   isActive: boolean("is_active").notNull().default(true),
   company: companyEnum("company").default("mirae_abm"),
 });
@@ -68,7 +69,7 @@ export const departmentsRelations = relations(departments, ({ one, many }) => ({
   users: many(users),
 }));
 
-export const attendanceTypeEnum = pgEnum("attendance_type", ["normal", "annual", "half_day", "sick", "family_event", "other"]);
+export const attendanceTypeEnum = pgEnum("attendance_type", ["normal", "annual", "half_day", "sick", "family_event", "other", "resigned"]);
 export const attendanceSourceEnum = pgEnum("attendance_source", ["qr", "manual", "vacation"]);
 
 export const attendanceLogs = pgTable("attendance_logs", {
