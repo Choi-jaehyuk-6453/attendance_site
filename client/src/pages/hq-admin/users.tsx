@@ -37,7 +37,8 @@ import { useCompany } from "@/lib/company";
 export default function HqAdminUsers() {
     const { toast } = useToast();
     const { company } = useCompany();
-    const [selectedSiteId, setSelectedSiteId] = useState<string>("");
+    const [selectedSiteId, setSelectedSiteId] = useState<string>("all");
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState("");
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
@@ -97,7 +98,9 @@ export default function HqAdminUsers() {
     const filteredUsers = users.filter(u => {
         if (u.role === "hq_admin") return false;
         if (selectedSiteId !== "all" && u.siteId !== selectedSiteId) return false;
+        if (selectedDepartmentId !== "all" && u.departmentId !== selectedDepartmentId) return false;
         if (searchTerm && !u.name.includes(searchTerm)) return false;
+        return true;
     }).sort((a, b) => {
         const deptA = allDepartments.find(d => d.id === a.departmentId);
         const deptB = allDepartments.find(d => d.id === b.departmentId);
@@ -131,11 +134,15 @@ export default function HqAdminUsers() {
 
     if (usersLoading) return <div>Loading...</div>;
 
-    // Filter departments for the editing user's site (if they have one)
+    // Filter departments for the selected site in the filter, or editing user
     const editingUserSiteId = editingUser?.siteId || (selectedSiteId !== "all" ? selectedSiteId : undefined);
     const availableDepartments = editingUserSiteId
         ? allDepartments.filter(d => d.siteId === editingUserSiteId)
-        : [];
+        : allDepartments;
+
+    const filterDepartments = selectedSiteId !== "all"
+        ? allDepartments.filter(d => d.siteId === selectedSiteId)
+        : allDepartments;
 
     return (
         <div className="space-y-6">
@@ -155,7 +162,21 @@ export default function HqAdminUsers() {
                         ))}
                     </SelectContent>
                 </Select>
-                <div className="relative w-64">
+
+                <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
+                    <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="조직 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">전체 조직</SelectItem>
+                        <SelectItem value="none">미배치(조직 없음)</SelectItem>
+                        {filterDepartments.map(dept => (
+                            <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="이름 검색"

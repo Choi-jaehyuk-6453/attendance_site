@@ -76,14 +76,22 @@ export default function SiteManagerWorkers() {
         enabled: !!user?.siteId,
     });
 
-    // Filter states for worker status
+    // Filter states
     const [statusFilter, setStatusFilter] = useState<"active" | "resigned">("active");
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
+    const [searchTerm, setSearchTerm] = useState("");
 
     // Show all site users (workers + site_managers)
     const allSiteUsers = workers.filter(w => w.role === "worker" || w.role === "site_manager");
 
-    // Filtered by status and Sorted by sortOrder > name
-    const filteredUsers = allSiteUsers.filter(w => statusFilter === "active" ? w.isActive : !w.isActive).sort((a, b) => {
+    // Filtered by status, department, search and Sorted by sortOrder > name
+    const filteredUsers = allSiteUsers.filter(w => {
+        if (statusFilter === "active" && !w.isActive) return false;
+        if (statusFilter === "resigned" && w.isActive) return false;
+        if (selectedDepartmentId !== "all" && String(w.departmentId || "none") !== selectedDepartmentId) return false;
+        if (searchTerm && !w.name.includes(searchTerm)) return false;
+        return true;
+    }).sort((a, b) => {
         const deptA = departments.find(d => d.id === a.departmentId);
         const deptB = departments.find(d => d.id === b.departmentId);
         const orderA = deptA?.sortOrder ?? 999;
