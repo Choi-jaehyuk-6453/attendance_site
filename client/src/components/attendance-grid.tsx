@@ -329,10 +329,11 @@ export function AttendanceGrid(props: AttendanceGridProps) {
       if (deptName && (deptName.includes("경비") || deptName.includes("보안"))) {
         const getWeight = (title: string | null) => {
           if (!title) return 99;
-          if (title.includes("주간")) return 1;
-          if (title.includes("A조")) return 2;
-          if (title.includes("B조")) return 3;
-          if (title.includes("C조")) return 4;
+          const upperTitle = title.toUpperCase();
+          if (upperTitle.includes("주간")) return 1;
+          if (upperTitle.includes("A")) return 2;
+          if (upperTitle.includes("B")) return 3;
+          if (upperTitle.includes("C")) return 4;
           return 99;
         };
         const weightA = getWeight(a.jobTitle);
