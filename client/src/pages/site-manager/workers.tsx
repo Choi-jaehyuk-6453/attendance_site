@@ -41,7 +41,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Upload, Download, Users, UserX, UserCheck, Trash2 } from "lucide-react";
+import { Plus, Upload, Download, Users, UserX, UserCheck, Trash2, Edit } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { User, Department } from "@shared/schema";
 
@@ -54,10 +54,12 @@ export default function SiteManagerWorkers() {
     const [bulkData, setBulkData] = useState<any[] | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Duplicate name detection state
     const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
     const [duplicateName, setDuplicateName] = useState("");
     const [pendingWorkerData, setPendingWorkerData] = useState<any>(null);
+
+    const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [editForm, setEditForm] = useState<Partial<User>>({});
 
     const { data: workers = [] } = useQuery<User[]>({
         queryKey: ["/api/users"],
@@ -80,8 +82,16 @@ export default function SiteManagerWorkers() {
     // Show all site users (workers + site_managers)
     const allSiteUsers = workers.filter(w => w.role === "worker" || w.role === "site_manager");
 
-    // Filtered by status
-    const filteredUsers = allSiteUsers.filter(w => statusFilter === "active" ? w.isActive : !w.isActive);
+    // Filtered by status and Sorted by sortOrder > name
+    const filteredUsers = allSiteUsers.filter(w => statusFilter === "active" ? w.isActive : !w.isActive).sort((a, b) => {
+        const deptA = departments.find(d => d.id === a.departmentId);
+        const deptB = departments.find(d => d.id === b.departmentId);
+        const orderA = deptA?.sortOrder ?? 999;
+        const orderB = deptB?.sortOrder ?? 999;
+
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name, 'ko');
+    });
 
     const createWorkerMutation = useMutation({
         mutationFn: async (data: any) => {
@@ -99,6 +109,21 @@ export default function SiteManagerWorkers() {
         onError: () => {
             toast({ variant: "destructive", title: "근로자 등록에 실패했습니다" });
         },
+    });
+
+    const updateUserMutation = useMutation({
+        mutationFn: async (data: any) => {
+            const res = await apiRequest("PATCH", `/api/users/${editingUser?.id}`, data);
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+            setEditingUser(null);
+            toast({ title: "근로자 정보가 수정되었습니다" });
+        },
+        onError: () => {
+            toast({ variant: "destructive", title: "수정에 실패했습니다" });
+        }
     });
 
     const bulkImportMutation = useMutation({
@@ -213,6 +238,24 @@ export default function SiteManagerWorkers() {
     const handleDuplicateConfirm = () => {
         if (!pendingWorkerData) return;
         createWorkerMutation.mutate(pendingWorkerData);
+    };
+
+    const handleEditClick = (user: User) => {
+        setEditingUser(user);
+        setEditForm({
+            name: user.name,
+            phone: user.phone,
+            role: user.role,
+            jobTitle: user.jobTitle,
+            departmentId: user.departmentId,
+            hireDate: user.hireDate,
+            isActive: user.isActive,
+        });
+    };
+
+    const handleSave = () => {
+        if (!editingUser) return;
+        updateUserMutation.mutate({ ...editForm, id: editingUser.id });
     };
 
     return (
@@ -410,6 +453,15 @@ export default function SiteManagerWorkers() {
                                     {worker.role === "worker" && (
                                         <div className="flex justify-end gap-1">
                                             <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleEditClick(worker)}
+                                                className="h-8 px-2"
+                                            >
+                                                <Edit className="h-4 w-4 mr-1" />
+                                                수정
+                                            </Button>
+                                            <Button
                                                 variant="ghost"
                                                 size="icon"
                                                 onClick={() => toggleActiveMutation.mutate(worker.id)}
@@ -485,6 +537,112 @@ export default function SiteManagerWorkers() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>사용자 정보 수정</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>이름</Label>
+                                <Input
+                                    value={editForm.name || ""}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>전화번호</Label>
+                                <Input
+                                    value={editForm.phone || ""}
+                                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>역할</Label>
+                                <Select
+                                    value={editForm.role}
+                                    onValueChange={(v) => setEditForm({ ...editForm, role: v as User["role"] })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="worker">근로자</SelectItem>
+                                        <SelectItem value="site_manager">현장대리인</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>직책</Label>
+                                <Input
+                                    value={editForm.jobTitle || ""}
+                                    onChange={(e) => setEditForm({ ...editForm, jobTitle: e.target.value })}
+                                    placeholder="예: 반장, 팀장"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>소속 (조직)</Label>
+                            <Select
+                                value={String(editForm.departmentId || "none")}
+                                onValueChange={(v) => setEditForm({ ...editForm, departmentId: v === "none" ? null : v })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="소속 선택" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">없음</SelectItem>
+                                    {departments.map((dept) => (
+                                        <SelectItem key={dept.id} value={String(dept.id)}>
+                                            {dept.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>입사일</Label>
+                                <Input
+                                    type="date"
+                                    // Make sure date formatting matches the expected format string
+                                    // if it's stored as ISO we slice to 'YYYY-MM-DD'
+                                    value={editForm.hireDate ? editForm.hireDate.toString().slice(0, 10) : ""}
+                                    onChange={(e) => setEditForm({ ...editForm, hireDate: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>상태</Label>
+                                <Select
+                                    value={editForm.isActive ? "true" : "false"}
+                                    onValueChange={(v) => setEditForm({ ...editForm, isActive: v === "true" })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="true">활성</SelectItem>
+                                        <SelectItem value="false">비활성 (퇴사)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingUser(null)}>취소</Button>
+                        <Button onClick={handleSave} disabled={updateUserMutation.isPending}>
+                            {updateUserMutation.isPending ? "저장 중..." : "저장"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

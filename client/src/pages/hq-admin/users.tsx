@@ -98,7 +98,15 @@ export default function HqAdminUsers() {
         if (u.role === "hq_admin") return false;
         if (selectedSiteId !== "all" && u.siteId !== selectedSiteId) return false;
         if (searchTerm && !u.name.includes(searchTerm)) return false;
-        return true;
+    }).sort((a, b) => {
+        const deptA = allDepartments.find(d => d.id === a.departmentId);
+        const deptB = allDepartments.find(d => d.id === b.departmentId);
+
+        const orderA = deptA?.sortOrder ?? 999;
+        const orderB = deptB?.sortOrder ?? 999;
+
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name, 'ko');
     });
 
     const [editForm, setEditForm] = useState<Partial<User>>({});

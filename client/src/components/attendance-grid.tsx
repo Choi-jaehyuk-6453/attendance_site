@@ -323,9 +323,24 @@ export function AttendanceGrid(props: AttendanceGridProps) {
     });
   };
 
-  // Sort users by name
-  const sortUsers = (usersList: User[]) => {
-    return [...usersList].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  // Sort users
+  const sortUsers = (usersList: User[], deptName?: string) => {
+    return [...usersList].sort((a, b) => {
+      if (deptName && (deptName.includes("경비") || deptName.includes("보안"))) {
+        const getWeight = (title: string | null) => {
+          if (!title) return 99;
+          if (title.includes("주간")) return 1;
+          if (title.includes("A조")) return 2;
+          if (title.includes("B조")) return 3;
+          if (title.includes("C조")) return 4;
+          return 99;
+        };
+        const weightA = getWeight(a.jobTitle);
+        const weightB = getWeight(b.jobTitle);
+        if (weightA !== weightB) return weightA - weightB;
+      }
+      return a.name.localeCompare(b.name, "ko");
+    });
   };
 
   const siteUserCount = useMemo(() => {
@@ -453,7 +468,7 @@ export function AttendanceGrid(props: AttendanceGridProps) {
                               {siteDepartments.map(dept => {
                                 const users = deptUserMap.get(dept.id) || [];
                                 if (users.length === 0) return null;
-                                const sortedUsers = sortUsers(users);
+                                const sortedUsers = sortUsers(users, dept.name);
                                 return (
                                   <Fragment key={`dept-group-${dept.id}`}>
                                     <tr className="bg-muted/30">
