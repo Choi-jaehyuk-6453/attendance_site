@@ -22,6 +22,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ export default function HqAdminUsers() {
     const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
     const [searchTerm, setSearchTerm] = useState("");
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [userToDelete, setUserToDelete] = useState<User | null>(null);
     const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
         queryKey: ["/api/users", company.id],
         queryFn: async () => {
@@ -83,8 +85,8 @@ export default function HqAdminUsers() {
     });
 
     const deleteUserMutation = useMutation({
-        mutationFn: async (id: string) => {
-            await apiRequest("DELETE", `/api/users/${id}`);
+        mutationFn: async ({ id, hard }: { id: string, hard: boolean }) => {
+            await apiRequest("DELETE", `/api/users/${id}${hard ? '?hard=true' : ''}`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -250,11 +252,7 @@ export default function HqAdminUsers() {
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    onClick={() => {
-                                                        if (confirm(`${user.name} 님을 정말 삭제하시겠습니까?\n삭제 시 비활성화 처리되며, 과거 출퇴근 기록은 보존됩니다.`)) {
-                                                            deleteUserMutation.mutate(user.id);
-                                                        }
-                                                    }}
+                                                    onClick={() => setUserToDelete(user)}
                                                 >
                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                 </Button>
@@ -369,6 +367,52 @@ export default function HqAdminUsers() {
                             {updateUserMutation.isPending ? "저장 중..." : "저장"}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete User Dialog */}
+            <Dialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>사용자 삭제</DialogTitle>
+                        <DialogDescription>
+                            {userToDelete?.name} 사용자의 삭제 방식을 선택해주세요.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-4 py-4">
+                        <Button 
+                            variant="secondary" 
+                            className="justify-start h-auto flex flex-col items-start p-4"
+                            onClick={() => {
+                                if (userToDelete) {
+                                    deleteUserMutation.mutate({ id: userToDelete.id, hard: false });
+                                    setUserToDelete(null);
+                                }
+                            }}
+                        >
+                            <span className="font-semibold text-base mb-1">퇴사 처리 (비활성)</span>
+                            <span className="text-sm font-normal text-muted-foreground whitespace-normal text-left">
+                                로그인 권한이 정지되지만, 과거 데이터(출퇴근 등)는 보존됩니다.
+                            </span>
+                        </Button>
+                        <Button 
+                            variant="destructive" 
+                            className="justify-start h-auto flex flex-col items-start p-4"
+                            onClick={() => {
+                                if (userToDelete) {
+                                    if (confirm("정말 영구 삭제하시겠습니까?\\n모든 기록이 데이터베이스에서 완전히 삭제되며 되돌릴 수 없습니다.")) {
+                                        deleteUserMutation.mutate({ id: userToDelete.id, hard: true });
+                                        setUserToDelete(null);
+                                    }
+                                }
+                            }}
+                        >
+                            <span className="font-semibold text-base mb-1">영구 삭제</span>
+                            <span className="text-sm font-normal text-white/80 whitespace-normal text-left">
+                                이 사용자의 모든 정보(기록 포함)가 데이터베이스에서 완전히 영구 삭제됩니다.
+                            </span>
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

@@ -105,24 +105,31 @@ export async function registerRoutes(
       }
 
       let matchedUser = null;
+      let inactiveSiteError = false;
+
       for (const user of matchingUsers) {
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (isValidPassword) {
+          // Verify site is active before accepting this user
+          if (user.role === "worker" && user.siteId) {
+            const site = await storage.getSite(user.siteId);
+            if (!site || !site.isActive) {
+              inactiveSiteError = true;
+              continue; // Keep checking other profiles with the same password.
+            }
+          }
+          
           matchedUser = user;
+          inactiveSiteError = false;
           break;
         }
       }
 
       if (!matchedUser) {
-        return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
-      }
-
-      // Check if worker's assigned site is still active
-      if (matchedUser.role === "worker" && matchedUser.siteId) {
-        const site = await storage.getSite(matchedUser.siteId);
-        if (!site || !site.isActive) {
+        if (inactiveSiteError) {
           return res.status(401).json({ error: "배정된 현장이 삭제되었습니다. 관리자에게 문의해주세요." });
         }
+        return res.status(401).json({ error: "아이디 또는 비밀번호가 올바르지 않습니다" });
       }
 
       // Masquerade as worker if Site Manager logs in via Name (instead of Site ID)
@@ -580,7 +587,11 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다" });
       }
-      await storage.deleteUser(id);
+      if (req.query.hard === 'true') {
+        await storage.hardDeleteUser(id);
+      } else {
+        await storage.deleteUser(id);
+      }
       res.status(204).send();
     } catch (error) {
       console.error("Delete user error:", error);
@@ -740,7 +751,7 @@ export async function registerRoutes(
   app.delete("/api/sites/:id", requireHqAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      await storage.deleteSite(id);
+      await storage.hardDeleteSite(id);
       res.status(204).send();
     } catch (error) {
       console.error("Delete site error:", error);

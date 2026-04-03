@@ -29,6 +29,7 @@ export interface IStorage {
   getUsersByDepartment(departmentId: string): Promise<User[]>;
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
   deleteUser(id: string): Promise<void>;
+  hardDeleteUser(id: string): Promise<void>;
   findUserByNamePhoneAndSite(name: string, phone: string | null, siteId: string): Promise<User | undefined>;
 
   // Sites
@@ -38,6 +39,7 @@ export interface IStorage {
   createSite(site: InsertSite): Promise<Site>;
   updateSite(id: string, data: Partial<InsertSite>): Promise<Site | undefined>;
   deleteSite(id: string): Promise<void>;
+  hardDeleteSite(id: string): Promise<void>;
 
   // Departments
   getDepartment(id: string): Promise<Department | undefined>;
@@ -121,6 +123,12 @@ export class DatabaseStorage implements IStorage {
     await db.update(users).set({ isActive: false, resignedDate: today }).where(eq(users.id, id));
   }
 
+  async hardDeleteUser(id: string): Promise<void> {
+    await db.delete(attendanceLogs).where(eq(attendanceLogs.userId, id));
+    await db.delete(vacationRequests).where(eq(vacationRequests.userId, id));
+    await db.delete(users).where(eq(users.id, id));
+  }
+
   async findUserByNamePhoneAndSite(name: string, phone: string | null, siteId: string): Promise<User | undefined> {
     const conditions = [
       eq(users.name, name),
@@ -163,6 +171,26 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSite(id: string): Promise<void> {
     await db.update(sites).set({ isActive: false }).where(eq(sites.id, id));
+  }
+
+  async hardDeleteSite(id: string): Promise<void> {
+    // 1. Delete all attendance logs for the site
+    await db.delete(attendanceLogs).where(eq(attendanceLogs.siteId, id));
+    
+    // 2. Delete vacation requests for all users in the site
+    const siteUsers = await this.getUsersBySite(id);
+    for (const u of siteUsers) {
+      await db.delete(vacationRequests).where(eq(vacationRequests.userId, u.id));
+    }
+    
+    // 3. Delete users in the site
+    await db.delete(users).where(eq(users.siteId, id));
+    
+    // 4. Delete departments in the site
+    await db.delete(departments).where(eq(departments.siteId, id));
+    
+    // 5. Delete the site itself
+    await db.delete(sites).where(eq(sites.id, id));
   }
 
   // === Departments ===

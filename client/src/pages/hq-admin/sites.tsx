@@ -630,7 +630,7 @@ export default function HqAdminSites() {
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => {
-                                                        if (confirm(`${site.name}을(를) 삭제하시겠습니까?`)) {
+                                                        if (confirm(`'${site.name}' 현장을 영구 삭제하시겠습니까?\n\n경고: 이 작업은 되돌릴 수 없으며, 현장에 포함된 모든 출퇴근 기록, 휴가 신청 내역, 소속 근로자 및 조직 정보가 데이터베이스에서 완전히 삭제됩니다.`)) {
                                                             deleteSiteMutation.mutate(site.id);
                                                         }
                                                     }}
