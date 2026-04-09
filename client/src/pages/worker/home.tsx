@@ -257,19 +257,21 @@ export default function WorkerHome() {
                         {isCompletedToday ? (
                             <div className="flex flex-col gap-4 py-4">
                                 <div className="text-center">
-                                    <p className="text-4xl font-bold text-primary">
+                                    <p className="text-4xl font-bold text-primary flex items-baseline justify-center gap-2">
                                         {format(new Date(todayLog.checkInTime!), "HH:mm")}
+                                        {todayLog.source === "manual" && <span className="text-base font-normal text-muted-foreground">(수동)</span>}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        출근 시간 {todayLog.source === "manual" ? "(수동)" : ""}
+                                        출근 시간
                                     </p>
                                 </div>
                                 <div className="text-center border-t border-border pt-4">
-                                    <p className="text-3xl font-bold text-blue-600">
+                                    <p className="text-3xl font-bold text-blue-600 flex items-baseline justify-center gap-2">
                                         {format(new Date(todayLog.checkOutTime!), "HH:mm")}
+                                        {todayLog.source === "manual" && <span className="text-sm font-normal text-muted-foreground">(수동)</span>}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        퇴근 시간 {todayLog.source === "manual" ? "(수동)" : ""}
+                                        퇴근 시간
                                     </p>
                                 </div>
 
@@ -287,11 +289,12 @@ export default function WorkerHome() {
                         ) : isIncomplete && activeLog?.checkInTime ? (
                             <div className="flex flex-col gap-4 py-4 text-center">
                                 <div>
-                                    <p className="text-4xl font-bold text-primary">
+                                    <p className="text-4xl font-bold text-primary flex items-baseline justify-center gap-2">
                                         {format(new Date(activeLog.checkInTime), "HH:mm")}
+                                        {activeLog.source === "manual" && <span className="text-base font-normal text-muted-foreground">(수동)</span>}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        {format(new Date(activeLog.checkInTime), "MM/dd")} 출근 {activeLog.source === "manual" ? "(수동)" : ""}
+                                        {format(new Date(activeLog.checkInTime), "MM/dd")} 출근
                                     </p>
                                 </div>
                                 <Button
