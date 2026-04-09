@@ -257,19 +257,23 @@ export default function WorkerHome() {
                         {isCompletedToday ? (
                             <div className="flex flex-col gap-4 py-4">
                                 <div className="text-center">
-                                    <p className="text-4xl font-bold text-primary flex items-baseline justify-center gap-2">
-                                        {format(new Date(todayLog.checkInTime!), "HH:mm")}
-                                        {todayLog.source === "manual" && <span className="text-base font-normal text-muted-foreground">(수동)</span>}
-                                    </p>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <p className="text-4xl font-bold text-primary">
+                                            {format(new Date(todayLog?.checkInTime!), "HH:mm")}
+                                        </p>
+                                        {todayLog?.source === "manual" && <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">수동</Badge>}
+                                    </div>
                                     <p className="text-sm text-muted-foreground mt-1">
                                         출근 시간
                                     </p>
                                 </div>
                                 <div className="text-center border-t border-border pt-4">
-                                    <p className="text-3xl font-bold text-blue-600 flex items-baseline justify-center gap-2">
-                                        {format(new Date(todayLog.checkOutTime!), "HH:mm")}
-                                        {todayLog.source === "manual" && <span className="text-base font-normal text-muted-foreground">(수동)</span>}
-                                    </p>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <p className="text-3xl font-bold text-blue-600">
+                                            {format(new Date(todayLog?.checkOutTime!), "HH:mm")}
+                                        </p>
+                                        {todayLog?.source === "manual" && <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">수동</Badge>}
+                                    </div>
                                     <p className="text-sm text-muted-foreground mt-1">
                                         퇴근 시간
                                     </p>
@@ -289,12 +293,14 @@ export default function WorkerHome() {
                         ) : isIncomplete && activeLog?.checkInTime ? (
                             <div className="flex flex-col gap-4 py-4 text-center">
                                 <div>
-                                    <p className="text-4xl font-bold text-primary flex items-baseline justify-center gap-2">
-                                        {format(new Date(activeLog.checkInTime), "HH:mm")}
-                                        {activeLog.source === "manual" && <span className="text-base font-normal text-muted-foreground">(수동)</span>}
-                                    </p>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <p className="text-4xl font-bold text-primary">
+                                            {format(new Date(activeLog?.checkInTime), "HH:mm")}
+                                        </p>
+                                        {activeLog?.source === "manual" && <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">수동</Badge>}
+                                    </div>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        {format(new Date(activeLog.checkInTime), "MM/dd")} 출근
+                                        {format(new Date(activeLog?.checkInTime), "MM/dd")} 출근
                                     </p>
                                 </div>
                                 <Button
