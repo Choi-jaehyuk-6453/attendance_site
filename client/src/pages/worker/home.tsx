@@ -260,13 +260,17 @@ export default function WorkerHome() {
                                     <p className="text-4xl font-bold text-primary">
                                         {format(new Date(todayLog.checkInTime!), "HH:mm")}
                                     </p>
-                                    <p className="text-sm text-muted-foreground mt-1">출근 시간</p>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        출근 시간 {todayLog.source === "manual" ? "(수동)" : ""}
+                                    </p>
                                 </div>
                                 <div className="text-center border-t border-border pt-4">
                                     <p className="text-3xl font-bold text-blue-600">
                                         {format(new Date(todayLog.checkOutTime!), "HH:mm")}
                                     </p>
-                                    <p className="text-sm text-muted-foreground mt-1">퇴근 시간</p>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        퇴근 시간 {todayLog.source === "manual" ? "(수동)" : ""}
+                                    </p>
                                 </div>
 
                                 <Button
@@ -287,7 +291,7 @@ export default function WorkerHome() {
                                         {format(new Date(activeLog.checkInTime), "HH:mm")}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        {format(new Date(activeLog.checkInTime), "MM/dd")} 출근
+                                        {format(new Date(activeLog.checkInTime), "MM/dd")} 출근 {activeLog.source === "manual" ? "(수동)" : ""}
                                     </p>
                                 </div>
                                 <Button

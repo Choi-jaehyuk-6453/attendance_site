@@ -282,8 +282,7 @@ export class DatabaseStorage implements IStorage {
     const [log] = await db.select().from(attendanceLogs).where(
       and(
         eq(attendanceLogs.userId, userId),
-        sql`${attendanceLogs.checkOutTime} IS NULL`,
-        eq(attendanceLogs.source, "qr") // Only QR check-ins need QR check-outs typically, but fine without it too. Let's just use checkOutTime IS NULL
+        sql`${attendanceLogs.checkOutTime} IS NULL`
       )
     ).orderBy(sql`${attendanceLogs.checkInTime} DESC`).limit(1);
     return log || undefined;
