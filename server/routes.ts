@@ -622,8 +622,8 @@ export async function registerRoutes(
         const targetCompany = queryCompany || currentUser.company;
 
         // Special Case: 'dawon' admin should ONLY see 'dawon_pmc' sites
-        // 'admin' (mirae_abm) can see everything or switch context
-        if (currentUser.username !== "admin" && currentUser.username !== "관리자" && currentUser.company) {
+        // '관리자' (mirae_abm) can see everything or switch context
+        if (currentUser.username !== "관리자" && currentUser.username !== "admin" && currentUser.company) {
           sites = sites.filter(s => s.company === currentUser.company);
         } else if (targetCompany) {
           sites = sites.filter(s => s.company === targetCompany);

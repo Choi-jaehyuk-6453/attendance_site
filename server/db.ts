@@ -13,6 +13,13 @@ if (!connectionString) {
   );
 }
 
-export const pool = new Pool({ connectionString });
+const poolConfig: pg.PoolConfig = { connectionString };
+
+// In serverless environments (like Vercel), limit max connections to avoid exhausting the DB pool
+if (process.env.VERCEL) {
+  poolConfig.max = 1;
+}
+
+export const pool = new Pool(poolConfig);
 
 export const db = drizzle(pool, { schema });

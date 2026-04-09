@@ -50,7 +50,7 @@ app.use(
     store: new PgSession({
       pool: pool,
       tableName: "session",
-      createTableIfMissing: true,
+      createTableIfMissing: !process.env.VERCEL,
     }),
     secret: process.env.SESSION_SECRET || "attendance-secret-key-change-in-production",
     resave: false,
@@ -129,11 +129,9 @@ export const setupApp = async () => {
   return app;
 };
 
-// Only start the server listening if this file is run directly.
+// Only start the server listening if not in Vercel.
 // In Vercel, this file is imported by api/index.js, so we don't want to start listening.
-const isMainModule = typeof require !== 'undefined' && require.main === module;
-
-if (!process.env.VERCEL && isMainModule) {
+if (!process.env.VERCEL) {
   setupApp().then(() => {
     const port = parseInt(process.env.PORT || "5000", 10);
     httpServer.listen(
