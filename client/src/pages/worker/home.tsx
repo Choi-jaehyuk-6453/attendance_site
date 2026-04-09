@@ -268,7 +268,7 @@ export default function WorkerHome() {
                                 <div className="text-center border-t border-border pt-4">
                                     <p className="text-3xl font-bold text-blue-600 flex items-baseline justify-center gap-2">
                                         {format(new Date(todayLog.checkOutTime!), "HH:mm")}
-                                        {todayLog.source === "manual" && <span className="text-sm font-normal text-muted-foreground">(수동)</span>}
+                                        {todayLog.source === "manual" && <span className="text-base font-normal text-muted-foreground">(수동)</span>}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">
                                         퇴근 시간
